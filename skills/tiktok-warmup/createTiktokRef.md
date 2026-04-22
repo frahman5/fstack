@@ -100,7 +100,23 @@ Wait for confirmation and final handle before proceeding.
 
 ---
 
-## STEP 5 — Update 1Password with final handle
+## STEP 5 — Initial scroll session (do this before any admin work)
+
+While the user is still in the app, ask them to spend **5–10 minutes scrolling the For You page** before closing TikTok. This makes the account look human from day one and avoids the pattern of "account created, immediately abandoned".
+
+Guide them:
+- Scroll the For You page naturally — pause on videos for a few seconds, let some play through
+- Follow 1–2 accounts that match the niche (e.g. for a LatAm finance account: personal finance creators, expat life, remittance tips)
+- Like 2–3 videos that feel on-brand
+- Do NOT post anything yet
+
+Ask the user: "Done scrolling? Roughly how long did you spend?" Note the time in the Airtable record later.
+
+Wait for confirmation before proceeding.
+
+---
+
+## STEP 6 — Update 1Password with final handle
 
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN=$(grep OP_SERVICE_ACCOUNT_TOKEN .env.cli | cut -d= -f2-)
@@ -113,7 +129,7 @@ If the handle differed from what was requested, note that too.
 
 ---
 
-## STEP 6 — Update ProtonMail account reference
+## STEP 7 — Update ProtonMail account reference
 
 If a ProtonMail alias was created in Step 2, update the alias count in `accountCreationRef.md` (the ProtonMail account reference section). Edit the file at `.agents/skills/tiktok-warmup/accountCreationRef.md`, increment the alias count for the relevant account, add a row to the alias table, then commit and push:
 
@@ -126,7 +142,7 @@ git push
 
 ---
 
-## STEP 7 — Create Airtable record
+## STEP 8 — Create Airtable record
 
 Use the Airtable MCP to create a new record in the Accounts table (base: `appfTuMpiXafoRNJG`, table: `tbljagCt5kJaBPNUl`) with these fields:
 
@@ -142,7 +158,7 @@ Use the Airtable MCP to create a new record in the Accounts table (base: `appfTu
 
 ---
 
-## STEP 8 — Write the bio
+## STEP 9 — Write the bio
 
 Pull the bios of similar accounts from Airtable (filter by brand or niche) to use as reference. Propose 3 bio options following the format used by existing accounts. Wait for the user to pick one or request changes.
 
@@ -150,7 +166,7 @@ Do NOT write the bio to Airtable yet — confirm first.
 
 ---
 
-## STEP 9 — Set niche description and search terms
+## STEP 10 — Set niche description and search terms
 
 Based on the account's language, geography, and cultural angle, propose:
 
@@ -161,7 +177,7 @@ Show the proposed values and wait for approval before writing.
 
 ---
 
-## STEP 10 — Write bio + niche to Airtable and mark Active
+## STEP 11 — Write bio + niche to Airtable and mark Active
 
 Once the user approves bio and search terms, write everything to Airtable in one update:
 - Bio (if there's a bio field — check schema)
@@ -174,7 +190,7 @@ Confirm all fields were written successfully.
 
 ---
 
-## STEP 11 — Summary
+## STEP 12 — Summary
 
 Print a clean summary:
 
