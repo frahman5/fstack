@@ -190,7 +190,43 @@ Confirm all fields were written successfully.
 
 ---
 
-## STEP 12 — Summary
+## STEP 12 — QA checklist
+
+Before marking this account done, walk the user through every item below. Do not skip any — these are the things most likely to silently break warmup sessions later.
+
+Ask the user to confirm each one out loud or in chat:
+
+**1Password**
+- [ ] 1Password entry exists for the **TikTok account** (`TikTok - <Display Name>`) with the correct email and a unique password
+- [ ] 1Password entry exists for the **email account** (ProtonMail login, Yahoo, or Outlook) so someone can log in to check OTPs manually if AgentMail fails
+- [ ] The TikTok entry notes field has the correct final handle and AgentMail inbox
+
+**Multilogin**
+- [ ] A Multilogin profile exists for this account
+- [ ] The profile name matches the TikTok handle exactly (e.g. `blazemoney_dinero`)
+- [ ] The profile is stored in the **Blaze** folder (not root, not Flooently)
+- [ ] The profile has a residential proxy assigned in an appropriate country (match the account target audience — e.g. Mexico proxy for LatAm accounts, US proxy for US-facing accounts)
+- [ ] The Multilogin Profile ID is recorded in Airtable (`Multilogin Profile ID` field)
+
+**Email & OTP**
+- [ ] Forwarding is active from the account email to the correct AgentMail inbox (`tiktok@agentmail.to` or `tiktokblaze@agentmail.to`)
+- [ ] The `AgentMail Inbox` field in Airtable matches where the email actually forwards
+
+**TikTok profile**
+- [ ] Bio is set on the live TikTok profile (matches what was approved in Step 9)
+- [ ] Profile photo or avatar is set — a blank profile looks like a bot
+- [ ] Account is NOT set to private
+
+**Airtable**
+- [ ] Record exists for this account with all fields populated: email, username, handle, AgentMail inbox, niche description, search terms
+- [ ] `Active` = true
+- [ ] `Warmup Start Date` = today
+
+Flag any unchecked items to the user before proceeding to the summary. Do not mark the account ready for warmup until all boxes are checked.
+
+---
+
+## STEP 13 — Summary
 
 Print a clean summary:
 
