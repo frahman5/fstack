@@ -27,13 +27,15 @@ Warms up TikTok accounts for Flooently + Blaze using Multilogin browser profiles
 | [peekabooRef.md](peekabooRef.md) | Peekaboo CLI fallback - used when request_access fails for cloud phone sessions. |
 | [runtimeLearnings.md](runtimeLearnings.md) | Operational learnings from live sessions - **read before every execution**. |
 | [accountCreationRef.md](accountCreationRef.md) | How to create TikTok accounts and store credentials in 1Password. |
+| [createTiktokRef.md](createTiktokRef.md) | Full interactive protocol for /create-tiktok — step-by-step account creation walkthrough. |
+| [executeWarmupsRef.md](executeWarmupsRef.md) | Full protocol for /execute-warmups — plans and runs warmup sessions across all active accounts. |
 
 ## Protocols
 
-- **Run today's warmups (the main thing)**: trigger /execute-warmups (see prompts/execute-warmups.md). Reads runtimeLearnings.md + browserWarmupRef.md + multiloginRef.md + airtableRef.md.
+- **Run today's warmups (the main thing)**: trigger /execute-warmups. Full protocol in executeWarmupsRef.md.
 - **Run a one-off browser warmup session**: read multiloginRef.md + browserWarmupRef.md + runtimeLearnings.md, then invoke scripts/tiktok-warmup-poc.py.
 - **Run a mobile warmup session** (rare): read multiloginRef.md + computerUseRef.md + runtimeLearnings.md.
-- **Create a new TikTok account**: trigger `/create-tiktok` (see `prompts/create-tiktok.md` in the consuming repo). Reads `accountCreationRef.md`.
+- **Create a new TikTok account**: trigger `/create-tiktok`. Full protocol in createTiktokRef.md.
 - **Multilogin API operations**: read multiloginRef.md.
 
 ## Design philosophy
