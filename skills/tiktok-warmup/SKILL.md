@@ -33,7 +33,7 @@ Warms up TikTok accounts for Flooently + Blaze using Multilogin browser profiles
 - **Run today's warmups (the main thing)**: trigger /execute-warmups (see prompts/execute-warmups.md). Reads runtimeLearnings.md + browserWarmupRef.md + multiloginRef.md + airtableRef.md.
 - **Run a one-off browser warmup session**: read multiloginRef.md + browserWarmupRef.md + runtimeLearnings.md, then invoke scripts/tiktok-warmup-poc.py.
 - **Run a mobile warmup session** (rare): read multiloginRef.md + computerUseRef.md + runtimeLearnings.md.
-- **Create a new TikTok account**: read accountCreationRef.md.
+- **Create a new TikTok account**: trigger `/create-tiktok` (see `prompts/create-tiktok.md` in the consuming repo). Reads `accountCreationRef.md`.
 - **Multilogin API operations**: read multiloginRef.md.
 
 ## Design philosophy
