@@ -13,6 +13,62 @@ Warms up TikTok accounts for Flooently + Blaze using Multilogin browser profiles
 
 **This is now a semi-manual system.** Faiyam runs `/execute-warmups` (see `prompts/execute-warmups.md`) when ready to warm up. The agent plans today's sessions, runs them in parallel across accounts, and relies on Faiyam for manual debugging (CAPTCHAs, re-logins, weird modals). No background scheduler, no cron — just a slash command.
 
+## Pre-flight — run this immediately on skill load
+
+First, update the skill to the latest version from fstack:
+
+```bash
+npx skills update
+```
+
+Then run the checks below and report health status for each activity. Do not block — just show the user what's ready and what isn't.
+
+```bash
+source .env.cli 2>/dev/null || true
+
+# 1Password — TikTok vault
+OP_VAULT_STATUS="❌ OP_SERVICE_ACCOUNT_TOKEN not set"
+if [ -n "$OP_SERVICE_ACCOUNT_TOKEN" ]; then
+  VAULTS=$(OP_SERVICE_ACCOUNT_TOKEN=$OP_SERVICE_ACCOUNT_TOKEN op vault list --format=json 2>&1)
+  if echo "$VAULTS" | python3 -c "import json,sys; names=[v['name'] for v in json.load(sys.stdin)]; assert 'TikTok' in names" 2>/dev/null; then
+    OP_VAULT_STATUS="✅ 1Password TikTok vault accessible"
+  else
+    OP_VAULT_STATUS="❌ TikTok vault not found (wrong OP token, or vault not shared with this service account)"
+  fi
+fi
+
+# MLX token
+MLX_STATUS="❌ MLX_AUTOMATION_TOKEN not set"
+[ -n "$MLX_AUTOMATION_TOKEN" ] && MLX_STATUS="✅ MLX_AUTOMATION_TOKEN set"
+
+# AgentMail
+AM_STATUS="❌ AGENTMAIL_KEY not set"
+[ -n "$AGENTMAIL_KEY" ] && AM_STATUS="✅ AGENTMAIL_KEY set"
+
+# Airtable
+AT_STATUS="⚠️  No AIRTABLE_ACCESS_TOKEN (assuming Airtable MCP is connected)"
+[ -n "$AIRTABLE_ACCESS_TOKEN" ] && AT_STATUS="✅ AIRTABLE_ACCESS_TOKEN set"
+
+echo ""
+echo "🔍 Environment Health"
+echo ""
+echo "  Account Warmup:"
+echo "    $MLX_STATUS"
+echo "    $OP_VAULT_STATUS"
+echo "    $AM_STATUS"
+echo "    $AT_STATUS"
+echo ""
+echo "  Account Creation:"
+echo "    $OP_VAULT_STATUS (needs read+write)"
+echo "    $AM_STATUS"
+echo "    $AT_STATUS"
+echo ""
+```
+
+Report the output to the user before proceeding. If warmup prerequisites (MLX + OP vault) are missing, tell the user warmup won't work and ask if they want to fix it first.
+
+---
+
 ## Reference Files
 
 | File | Purpose |

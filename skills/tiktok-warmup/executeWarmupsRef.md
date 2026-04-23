@@ -21,6 +21,38 @@ Semi-automated TikTok warmup runner. You (the agent) plan the day, launch sessio
 
 ---
 
+## STEP 0 — Pre-flight environment check
+
+Run this before anything else. If any check fails, stop and tell the user exactly what's broken — do not proceed.
+
+```bash
+# 1. .env.cli exists and has required keys
+source /Users/faiyamrahman/conductor/workspaces/Flooently/managua-v1/.env.cli
+echo "MLX_AUTOMATION_TOKEN: ${MLX_AUTOMATION_TOKEN:0:8}..."
+echo "OP_SERVICE_ACCOUNT_TOKEN: ${OP_SERVICE_ACCOUNT_TOKEN:0:8}..."
+
+# 2. 1Password CLI can authenticate and the TikTok vault is accessible
+OP_SERVICE_ACCOUNT_TOKEN=$OP_SERVICE_ACCOUNT_TOKEN op vault list --format=json | python3 -c "
+import json,sys
+vaults=[v['name'] for v in json.load(sys.stdin)]
+print('Vaults:', vaults)
+assert 'TikTok' in vaults, 'TikTok vault NOT found — OP token is wrong or lacks access'
+print('✅ TikTok vault OK')
+"
+
+# 3. Multilogin launcher is running
+curl -sf http://localhost:45001/api/v1/profile/list > /dev/null && echo "✅ Multilogin launcher OK" || echo "⚠ Multilogin launcher not responding — open the Multilogin desktop app"
+```
+
+**What each check catches:**
+- Missing/wrong `OP_SERVICE_ACCOUNT_TOKEN` → auto-login will fail for any logged-out profile
+- `TikTok` vault not found → the token is from the wrong 1Password account or lacks vault access (this broke warmups on 2026-04-22 after engineer onboarding split the 1Password accounts)
+- Multilogin not running → all profile launches will fail immediately
+
+If pre-flight fails, do NOT schedule any sessions. Fix the issue first, then re-invoke `/execute-warmups`.
+
+---
+
 ## STEP 1 — Read context
 
 1. Read `runtimeLearnings.md` (it has real bug fixes — do not skip).
