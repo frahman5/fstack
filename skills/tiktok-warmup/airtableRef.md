@@ -137,6 +137,7 @@ Canonical Blaze-base ID: `tbljagCt5kJaBPNUl`
 | fld8eGooYa0yNDf3x | Warmup Day | number |
 | fldLIF7dov0zBT7iV | Manual Warmup Log | multipleRecordLinks → Manual Warmup Log table |
 | fldmySQAr2mZjw6ne | Email Recovery | singleSelect: `Backed Up` / `Not Set Up` |
+| (dynamic) | AgentMail Inbox | singleLineText — e.g. `tiktokblaze@agentmail.to` or `tiktok@agentmail.to`; blank = forwarding not yet active, use Tier 2 direct email fallback |
 
 **Country → UTC offset fallback** (if UTC Offset field is blank):
 - Mexico → -06:00 | Colombia → -05:00 | Argentina → -03:00
