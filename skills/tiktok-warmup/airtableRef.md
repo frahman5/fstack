@@ -1,29 +1,117 @@
 # Airtable Reference
 
-## How to access Airtable — ALWAYS use the MCP connector
+## 🚨 HARD RULE: REST API only, never the MCP
 
-**Never use curl, the Airtable REST API, or load env vars to access Airtable.** The Airtable MCP connector is already connected and requires no credentials. Use these MCP tools:
+**Never use the Airtable MCP (`mcp__claude_ai_Airtable__*`).** Always use the Airtable REST API with `$AIRTABLE_ACCESS_TOKEN` from `.env.cli`. If the token is rejected, rotate it — do not fall back to MCP.
 
-| Operation | MCP Tool |
-|-----------|----------|
-| Query / filter records | `mcp__claude_ai_Airtable__list_records_for_table` |
-| Search records | `mcp__claude_ai_Airtable__search_records` |
-| Create new records | `mcp__claude_ai_Airtable__create_records_for_table` |
-| Update existing records | `mcp__claude_ai_Airtable__update_records_for_table` |
-| Create field | `mcp__claude_ai_Airtable__create_field` |
-| Get table schema | `mcp__claude_ai_Airtable__get_table_schema` |
+**Why:** MCP returns unfiltered cross-brand data (e.g. Flooently accounts bleeding into Blaze queries), costs extra round-trips, and has been flaky. The REST API with explicit `filterByFormula` gives precise, repeatable queries.
 
-**Note: The MCP does not support deleting records.** If deletion is needed, do it manually in the Airtable UI.
+## Base discovery (no hardcoded IDs)
 
-All tools take `base_id` and `table_id` (not table name) as parameters. Use the IDs in this file.
+The skill is shared across repos (blaze-platform, Flooently). Each repo has its own Airtable base with the same schema. **Base IDs, table IDs, and field IDs all vary per repo** — we auto-discover them at runtime instead of hardcoding.
+
+### How it works
+
+`.agents/skills/tiktok-warmup/resolve_airtable_schema.py` finds the right base by schema fingerprint — a base qualifies if it has both `Accounts` and `Session Log` tables with the canonical fields listed below. If multiple bases match (e.g. Blaze and Flooently bases in the same workspace), it disambiguates by brand — detects the current repo's brand from cwd and looks for an `Accounts` row tagged that brand.
+
+Result is cached at `scripts/warmup/airtable-schema-cache.json` (gitignored). Subsequent runs are instant.
+
+### Using the resolver
+
+At the start of any workflow that touches Airtable:
+
+```bash
+source .env.cli
+eval "$(python3 .agents/skills/tiktok-warmup/resolve_airtable_schema.py --print-env)"
+```
+
+After this, the following env vars are set:
+
+| Var | Example |
+|-----|---------|
+| `AIRTABLE_BASE_ID` | `appfTuMpiXafoRNJG` |
+| `AIRTABLE_BRAND` | `Blaze` |
+| `AIRTABLE_ACCOUNTS_TABLE` | `tbljagCt5kJaBPNUl` |
+| `AIRTABLE_SESSION_LOG_TABLE` | `tbluS09ymOa9oBDwA` |
+| `AIRTABLE_SCHEDULED_SESSIONS_TABLE` | (if present) |
+| `AIRTABLE_AGENT_MESSAGES_TABLE` | (if present) |
+| `AIRTABLE_MANUAL_WARMUP_LOG_TABLE` | (if present) |
+
+Field IDs are NOT exported as env vars — they're in the cache JSON under `tables.<Table Name>.fields.<Field Name>`. To read one in bash:
+
+```bash
+jq -r '.tables.Accounts.fields["TikTok Username"]' scripts/warmup/airtable-schema-cache.json
+```
+
+Python scripts can just load the JSON directly.
+
+### If discovery fails
+
+- **"No base matched the TikTok warmup schema"** — token doesn't have access to the warmup base. Add the right base under **Access** at https://airtable.com/create/tokens.
+- **"Multiple bases match ... none have accounts tagged Brand=X"** — the schema matches in multiple bases but no accounts are brand-tagged. Tag at least one account in the intended base with the current brand, then rerun.
+- **"Ambiguous: multiple bases match schema AND have brand rows"** — two bases both have accounts tagged the same brand. Pick one and remove access to the other in the token, or add `AIRTABLE_BASE_ID=...` to `.env.cli` to override discovery.
+
+### To force re-discovery
+
+```bash
+python3 .agents/skills/tiktok-warmup/resolve_airtable_schema.py --refresh
+```
+
+Useful when:
+- Token changed
+- Schema changed (new table or renamed field)
+- You just connected the token to a new base and want to adopt it
+
+## Canonical API calls
+
+Once env vars are loaded:
+
+List active Blaze accounts:
+
+```bash
+curl -s -H "Authorization: Bearer $AIRTABLE_ACCESS_TOKEN" \
+  --data-urlencode "filterByFormula=AND({Active}=TRUE(),{Brand}=\"$AIRTABLE_BRAND\")" \
+  --get "https://api.airtable.com/v0/$AIRTABLE_BASE_ID/$AIRTABLE_ACCOUNTS_TABLE"
+```
+
+Create a Session Log row (field names accepted for create/update):
+
+```bash
+curl -s -X POST "https://api.airtable.com/v0/$AIRTABLE_BASE_ID/$AIRTABLE_SESSION_LOG_TABLE" \
+  -H "Authorization: Bearer $AIRTABLE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"fields":{"Account Name":"Farah Job","Duration (min)":0,"Session Kind":"maintenance-skip"}}'
+```
+
+Update a record:
+
+```bash
+curl -s -X PATCH "https://api.airtable.com/v0/$AIRTABLE_BASE_ID/$AIRTABLE_ACCOUNTS_TABLE/$RECORD_ID" \
+  -H "Authorization: Bearer $AIRTABLE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"fields":{"TikTok Username":"blazemoneycrypto"}}'
+```
+
+Create a field via Meta API (needs `schema.bases:write`):
+
+```bash
+curl -s -X POST "https://api.airtable.com/v0/meta/bases/$AIRTABLE_BASE_ID/tables/$AIRTABLE_SESSION_LOG_TABLE/fields" \
+  -H "Authorization: Bearer $AIRTABLE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Session Kind","type":"singleSelect","options":{"choices":[{"name":"initial-warmup"},{"name":"maintenance-run"},{"name":"maintenance-skip"}]}}'
+```
+
+**Note: the API does not support deleting records programmatically.** Do deletes in the Airtable UI.
 
 ---
 
-Base ID: `appfTuMpiXafoRNJG`
+## Expected schema (required fields by table name)
 
----
+The fingerprint resolver checks these table + field names. IDs below are the canonical Blaze-base values for reference, but **do not use them directly in code** — always resolve via the cache.
 
-## Accounts table (tbljagCt5kJaBPNUl)
+## Accounts table (`Accounts`)
+
+Canonical Blaze-base ID: `tbljagCt5kJaBPNUl`
 
 | Field ID | Name | Type |
 |----------|------|------|
@@ -57,7 +145,9 @@ Base ID: `appfTuMpiXafoRNJG`
 
 ---
 
-## Scheduled Sessions table (tbl6ZiOVDWlsWkAuk)
+## Scheduled Sessions table (`Scheduled Sessions`)
+
+Canonical Blaze-base ID: `tbl6ZiOVDWlsWkAuk`
 
 | Field ID | Name | Type |
 |----------|------|------|
@@ -79,7 +169,9 @@ Base ID: `appfTuMpiXafoRNJG`
 
 ---
 
-## Session Log table (tbluS09ymOa9oBDwA)
+## Session Log table (`Session Log`)
+
+Canonical Blaze-base ID: `tbluS09ymOa9oBDwA`
 
 | Field ID | Name | Type |
 |----------|------|------|
@@ -100,7 +192,9 @@ Base ID: `appfTuMpiXafoRNJG`
 
 ---
 
-## Manual Warmup Log table (tblyrJS8mr5clxqx1)
+## Manual Warmup Log table (`Manual Warmup Log`)
+
+Canonical Blaze-base ID: `tblyrJS8mr5clxqx1`
 
 One row per manual warmup session. Linked to Accounts. Tracks all warmup activity on manually-managed accounts.
 
@@ -116,7 +210,9 @@ One row per manual warmup session. Linked to Accounts. Tracks all warmup activit
 
 ---
 
-## Agent Messages table (tblNC6cauReYfeMm0)
+## Agent Messages table (`Agent Messages`)
+
+Canonical Blaze-base ID: `tblNC6cauReYfeMm0`
 
 | Field ID | Name | Type |
 |----------|------|------|
