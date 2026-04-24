@@ -239,64 +239,13 @@ def break_into_sessions(remaining_min, account_name, today_iso, session_index=0)
 
 Result per account: `{"account": "...", "sessions_to_run": [{"duration_min": 7}, {"duration_min": 23}, ...], "scheduled_times_utc": [...], "warmup_week": N}`.
 
-### 4e. Schedule sessions across waking hours
+### 4e. Finalize session list
 
-**Do NOT run all sessions immediately.** Instead, distribute them randomly across the account's remaining waking hours today and schedule each one as a separate trigger via the `/schedule` skill (`CronCreate` + `RemoteTrigger`). This makes the day's activity look organic — short check-ins, longer doomscrolls, gaps of inactivity — rather than a mechanical burst.
+Compile the final list of sessions to run this invocation — one ordered queue per account. No RemoteTriggers, no CronCreate — everything runs in the current agent thread (Step 5).
 
-**Scheduling rules:**
-- Only schedule within the account's waking window (`Waking Start`–`Waking End` in local time). If no waking window is set, use 08:00–23:00 in UTC.
-- Minimum gap between sessions for the same account: **20–60 min** (random, seeded).
-- Spread sessions across the full remaining waking window — don't cluster them.
-- Each scheduled trigger is a self-contained agent prompt (see below).
+For accounts that have already partially run today (some sessions logged), only include the remaining sessions.
 
-**Trigger prompt template for each session:**
-```
-Run one TikTok warmup session.
-
-Account: <platform,handle>
-Human name for Airtable: <human_name>
-Duration: <D> minutes
-Warmup week: <N> | Warmup day: <X> | Session # today: <Y> (<prior_count> sessions done before this one today)
-
-Pre-run — compute daily niche %:
-  Query Airtable Session Log (base appfTuMpiXafoRNJG, table tbluS09ymOa9oBDwA) for today's successful sessions
-  where Account Name = "<human_name>" and Error is blank and FYP Niche % (fldQHQm3TFzw1lZBC) is set.
-  daily_niche_pct = Σ(fyp_niche_pct × videos_watched) / Σ(videos_watched). If no qualifying rows, omit --daily-niche-pct.
-
-Step 1 — Run (from /Users/faiyamrahman/conductor/workspaces/Flooently/douala):
-  uv run --with playwright --with requests python3 -u .agents/skills/tiktok-warmup/tiktok-warmup-poc.py \
-    --profile "<platform,handle>" --week <N> --duration <D> \
-    --niche-terms "<comma_separated_search_terms>" \
-    --daily-niche-pct <daily_niche_pct>   ← omit entirely if no prior data
-
-  IMPORTANT: apply fuzzing to --niche-terms — never pass the Airtable pool terms verbatim every run.
-  See sessionDesignRef.md "Picking search terms and hashtag slugs" for the fuzzing rules
-  (roughly: 50% verbatim, 20% minor typos, 15% reorder/paraphrase, 10% semantic cousin, 5% language flip).
-  The goal: TikTok sees varied, human-like queries, not identical strings repeated across sessions.
-
-Step 2 — Parse JSON summary from stdout. Extract: duration_min, niche_videos, fyp_niche_pct, likes, follows,
-  comments (bool), comment_text, searches (int), error.
-
-Step 3 — Write Session Log row (base appfTuMpiXafoRNJG, table tbluS09ymOa9oBDwA):
-  fldGckcL5Qc5vcug9 (Timestamp UTC): current UTC ISO
-  fldlUusi4GgT4n3oS (Account Name): "<human_name>"
-  fldAGlCfxRJLJE6NB (Warmup Day): <X>
-  fld4r6rSbhADxC5lk (Session # Today): <Y>
-  fldiowoint6Gohzzw (Duration min): actual duration from JSON
-  fldQHQm3TFzw1lZBC (FYP Niche %): fyp_niche_pct from JSON (number, e.g. 0.72)
-  fldQySoabhxMjtDiV (Likes): likes count
-  fldjlQ9xz0Wwwea9m (Follows): follows count
-  fldsrWgDulMBACpCT (Comment Left): true if comment posted
-  fldqYFV4prfupAZLC (Comment Text): comment text if any
-  fldtLSEqt4pkBwqyQ (Searches Done): searches as STRING (e.g. "2" not 2)
-  fldWHqaARjy1nsg4E (Error): blank on success, error message on failure
-
-Step 4 — On failure: populate Error field + send Telegram:
-  curl -s -X POST "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendMessage" \
-    -d "chat_id=5043064976&text=WARMUP FAILED: <platform,handle> session <Y> — <error summary>"
-```
-
-Write the full plan (with scheduled times) to `/tmp/tk_plan.json` and show Faiyam a summary:
+Write the plan to `/tmp/tk_plan.json` and show Faiyam a summary:
 
 Account display format in all plans and summaries: `platform,handle` (e.g. `tiktok,flooently_spanish`). Derived from the `Platform` + `Username` fields in Airtable. The Airtable `Name` field (e.g. "Sebastian Vargas") is the internal record name — never use it in plan output.
 
@@ -311,31 +260,34 @@ Plan for 2026-04-18:
 
 ---
 
-## STEP 5 — Schedule all sessions via /schedule
+## STEP 5 — Execute sessions — single-thread monitoring loop
 
-Once Faiyam confirms the plan, use the `/schedule` skill to create one trigger per session. Each trigger fires at the planned UTC time and runs the self-contained agent prompt from Step 4e.
+Once Faiyam confirms the plan, run all sessions directly in this agent thread. **No RemoteTriggers. No CronCreate. You stay in the loop, watch what happens, and fix problems.**
 
-**Use `CronCreate` with a one-time cron expression** for the scheduled UTC time. For a session at 14:35 UTC on 2026-04-18: cron = `35 14 18 4 *`.
+**Launch pattern — concurrent across accounts, sequential within:**
 
-After creating all triggers, report back to Faiyam:
-```
-✅ Scheduled 14 sessions across 5 accounts for today.
-   First fires at 13:20 UTC (tiktok,blazemoney_latam, 5 min)
-   Last fires at 22:45 UTC (tiktok,blaze__money, 18 min)
-   Results will be logged to Airtable Session Log automatically.
-```
-
-Then stop — no need to monitor. The triggers run independently. Faiyam can check Airtable Session Log for results, or wait for Telegram escalations on failures.
-
-### 5a. Session trigger failures
-
-Each trigger agent handles its own error reporting (Telegram escalation + Airtable Session Log error row). If Faiyam reports a failed session or wants to re-run one, manually invoke the trigger or run the script directly:
+1. For each account in the plan, launch its **first session** as a background Bash process. Each session runs:
 
 ```bash
-python3 -u .agents/skills/tiktok-warmup/tiktok-warmup-poc.py --profile "<handle>" --week <N> --duration <D>
+cd /Users/faiyamrahman/conductor/workspaces/Flooently/managua-v1
+uv run --with playwright --with requests python3 -u \
+  .agents/skills/tiktok-warmup/tiktok-warmup-poc.py \
+  --profile "<platform,handle>" --week <N> --duration <D> \
+  --niche-terms "<fuzzed_comma_separated_terms>" \
+  [--daily-niche-pct <float>]   # omit if no prior successful sessions today
 ```
 
-Do NOT spam BashOutput — poll each shell every 60–90 seconds. Between polls, if you have nothing else to do, just wait (use `Bash` with a `sleep` of 60–90s, or use the Monitor tool if available).
+**Fuzzing rule for `--niche-terms`:** never pass the Airtable pool verbatim every run. Roughly: 50% verbatim, 20% minor typos, 15% reorder/paraphrase, 10% semantic cousin, 5% language flip. See `sessionDesignRef.md` for details.
+
+**`--daily-niche-pct`:** before launching each session, query Session Log for today's successful rows for this account where FYP Niche % is set. Compute `Σ(fyp_niche_pct × videos_watched) / Σ(videos_watched)`. Omit the flag entirely if no qualifying rows exist.
+
+2. **Poll every 60–90 seconds.** Check each running background process for output. Do NOT spam BashOutput — one poll per cycle. Between polls, wait with `sleep 60` or similar.
+
+3. When a session produces JSON output, it's done — move to 5b. If it produces error output or hangs, move to 5c.
+
+4. After each completed session for an account, wait a **random 2–5 min gap** (seeded on `account_name + session_index`) before launching the next session for that account. Other accounts continue running concurrently.
+
+5. Continue until every account's queue is empty or Faiyam says stop.
 
 ### 5b. When a session finishes
 
@@ -382,7 +334,7 @@ Common failure categories and what you can try after Faiyam confirms:
 
 Multilogin's built-in proxy rotation is UI-only — there is no public API endpoint for "Get new IP." So this step is semi-manual.
 
-The script (`.agents/skills/tiktok-warmup/tiktok-warmup-poc.py::start_profile`) raises `PROXY_REFRESH_NEEDED: ...` when the launcher returns a proxy-related error. When you see that exception in a session's stdout:
+The script (`scripts/tiktok-warmup-poc.py::start_profile`) raises `PROXY_REFRESH_NEEDED: ...` when the launcher returns a proxy-related error. When you see that exception in a session's stdout:
 
 1. Do NOT mark the session failed yet. Tell Faiyam:
    > "Proxy error on **<account name>** profile launch. Please (1) open Multilogin, (2) find the profile, (3) click 'Get new IP' on its proxy row, (4) wait ~10s for the new IP to connect, (5) reply 'ready' here."
