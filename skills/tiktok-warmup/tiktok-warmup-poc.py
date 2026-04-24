@@ -25,9 +25,17 @@ from playwright.sync_api import sync_playwright, Page
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-# Auto-load .env.cli so the script can be invoked without `source .env.cli`
-_env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env.cli")
-if os.path.exists(_env_file):
+# Auto-load .env.cli — walk up from script location to find it (works from any depth)
+def _find_env_cli():
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(6):
+        candidate = os.path.join(d, ".env.cli")
+        if os.path.exists(candidate):
+            return candidate
+        d = os.path.dirname(d)
+    return None
+_env_file = _find_env_cli()
+if _env_file and os.path.exists(_env_file):
     with open(_env_file) as _f:
         for _line in _f:
             _line = _line.strip()
@@ -58,19 +66,6 @@ PROFILES = {
     "tiktok,blaze__money":          {"id": "6d55410a-de14-4933-87e1-aca1e7b674ae", "folder": BLAZE_FOLDER,    "country": "Any",           "op_item": "TikTok - Blaze Money"},
     "tiktok,blazemoney_stables":    {"id": "e06de76a-2025-47db-a458-687bdcf6e35c", "folder": BLAZE_FOLDER,    "country": "Any",           "op_item": "TikTok - Blaze Money Stables"},
 }
-
-# ---------------------------------------------------------------------------
-# Brand detection — filter PROFILES to the brand that owns this repo.
-# Blaze repos have "blaze" anywhere in their absolute path; Flooently repos don't.
-# This prevents cross-brand warmups when the script is invoked from the wrong repo.
-# ---------------------------------------------------------------------------
-_repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).lower()
-ACTIVE_BRAND = "Blaze" if "blaze" in _repo_root else "Flooently"
-PROFILES = {
-    k: v for k, v in PROFILES.items()
-    if (ACTIVE_BRAND == "Blaze") == (v["folder"] == BLAZE_FOLDER)
-}
-print(f"[brand] Running as {ACTIVE_BRAND} — {len(PROFILES)} profile(s) in scope: {', '.join(PROFILES)}", file=sys.stderr)
 
 MLX_TOKEN = os.environ.get("MLX_AUTOMATION_TOKEN", "") or os.environ.get("MULTILOGIN_API_KEY", "")
 
@@ -1351,118 +1346,6 @@ def _fetch_tiktok_otp(timeout_secs: int = 60) -> str:
     raise Exception("TikTok OTP email did not arrive within 60s")
 
 
-def _fetch_tiktok_otp_tuta(timeout_secs: int = 60) -> str:
-    """Poll Tuta inbox for a TikTok OTP — used when the account email is @tuta.com.
-    Logs in headlessly via Playwright using TOTP from 1Password, reads subject lines."""
-    import subprocess, json as _json, re as _re, hmac as _hmac, hashlib as _hashlib
-    import struct as _struct, base64 as _base64
-    from playwright.sync_api import sync_playwright
-
-    # Fetch Tuta credentials + TOTP secret from 1Password
-    result = subprocess.run(
-        ["op", "item", "get", "Tuta", "--vault", "TikTok",
-         "--format", "json", "--reveal"],
-        capture_output=True, text=True, timeout=20, env=os.environ,
-        stdin=subprocess.DEVNULL,
-    )
-    if result.returncode != 0:
-        raise Exception(f"op failed fetching Tuta creds: {result.stderr.strip()}")
-    item = _json.loads(result.stdout)
-    fields = {f["label"]: f.get("value", "") for f in item.get("fields", [])}
-    tuta_email = fields.get("username", "")
-    tuta_password = fields.get("password", "")
-    otp_uri = fields.get("one-time password", "")
-    totp_secret_match = _re.search(r"secret=([A-Z2-7]+)", otp_uri, _re.IGNORECASE)
-    if not totp_secret_match:
-        raise Exception("No TOTP secret found in Tuta 1Password item")
-    totp_secret = totp_secret_match.group(1).upper()
-
-    def _totp(secret: str) -> str:
-        key = _base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8))
-        counter = _struct.pack(">Q", int(time.time()) // 30)
-        mac = _hmac.new(key, counter, _hashlib.sha1).digest()
-        offset = mac[-1] & 0x0F
-        code = _struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
-        return str(code % 1000000).zfill(6)
-
-    print("  Fetching OTP from Tuta inbox...")
-    deadline = time.time() + timeout_secs
-
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
-        try:
-            page.goto("https://app.tuta.com", wait_until="domcontentloaded", timeout=30000)
-            time.sleep(2)
-
-            # Fill email + password
-            page.wait_for_selector('input[type="email"]', timeout=15000)
-            page.fill('input[type="email"]', tuta_email)
-            page.fill('input[type="password"]', tuta_password)
-            page.keyboard.press("Enter")
-            time.sleep(3)
-
-            # Handle TOTP 2FA
-            body = page.inner_text("body", timeout=3000).lower()
-            if "second factor" in body or "authenticator" in body:
-                try:
-                    auth_btn = page.query_selector('button:has-text("Authenticator code")')
-                    if auth_btn:
-                        auth_btn.click()
-                        time.sleep(1)
-                except Exception:
-                    pass
-                totp_input = page.query_selector(
-                    'input[type="number"], input[autocomplete="one-time-code"]'
-                )
-                code = _totp(totp_secret)
-                if totp_input:
-                    totp_input.fill(code)
-                    page.keyboard.press("Enter")
-                else:
-                    page.keyboard.type(code)
-                    page.keyboard.press("Enter")
-                time.sleep(5)
-
-            # Wait for inbox
-            page.wait_for_url("**/mail**", timeout=20000)
-
-            # Poll for new TikTok email in subject lines
-            seen_subjects = set()
-            while time.time() < deadline:
-                rows = page.query_selector_all('[role="listitem"]')
-                for row in rows:
-                    try:
-                        text = row.inner_text()
-                    except Exception:
-                        continue
-                    if text in seen_subjects:
-                        continue
-                    if "tiktok" not in text.lower() and "verification" not in text.lower():
-                        seen_subjects.add(text)
-                        continue
-                    match = _re.search(r"\b(\d{6})\b", text)
-                    if match:
-                        print(f"  OTP received from Tuta: {match.group(1)}")
-                        return match.group(1)
-                    seen_subjects.add(text)
-                time.sleep(10)
-                page.reload(wait_until="domcontentloaded", timeout=15000)
-                time.sleep(3)
-        finally:
-            browser.close()
-
-    raise Exception("TikTok OTP email did not arrive in Tuta inbox within timeout")
-
-
-def _fetch_otp_for_email(email: str, timeout_secs: int = 60) -> str:
-    """Route OTP fetching to the right provider based on the account email domain."""
-    if email.endswith("@tuta.com") or email.endswith("@tutanota.com"):
-        return _fetch_tiktok_otp_tuta(timeout_secs=timeout_secs)
-    return _fetch_tiktok_otp(timeout_secs=timeout_secs)
-
-
 def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
     """
     Verify TikTok is logged in. If not, attempt email login via 1Password credentials
@@ -1605,8 +1488,8 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
     otp_sel = 'input[placeholder*="code"], input[name="code"], input[type="number"][maxlength="6"]'
     otp_input = page.query_selector(otp_sel)
     if otp_input:
-        print("  OTP prompt detected — fetching OTP...")
-        otp = _fetch_otp_for_email(email, timeout_secs=60)
+        print("  OTP prompt detected — fetching from AgentMail...")
+        otp = _fetch_tiktok_otp(timeout_secs=60)
         human_type(page, otp_sel, otp)
         time.sleep(random.uniform(1, 2))
         # Submit OTP
