@@ -1,5 +1,7 @@
 # Execute Warmups
 
+> **Portability note:** This skill is shared across multiple repos via `frahman5/fstack`. Keep it repo-agnostic: never hardcode absolute repo paths, never reference `scripts/` directories in any consuming repo. The warmup script (`tiktok-warmup-poc.py`) lives inside this skill directory and is invoked relative to wherever the skill is installed (`.agents/skills/tiktok-warmup/`). The only path that varies per-machine is `.env.cli`, which the script discovers automatically via upward directory walk.
+
 Semi-automated TikTok warmup runner. You (the agent) plan the day, launch sessions, and rely on Faiyam for manual debugging (CAPTCHAs, re-logins, stuck Multilogin profiles). No scheduler, no Airtable "Scheduled Sessions" table — just decide what's needed right now and run it.
 
 **Reference files (read before starting):**
@@ -27,7 +29,10 @@ Run this before anything else. If any check fails, stop and tell the user exactl
 
 ```bash
 # 1. .env.cli exists and has required keys
-source /Users/faiyamrahman/conductor/workspaces/Flooently/managua-v1/.env.cli
+# .env.cli is discovered automatically by tiktok-warmup-poc.py (upward walk from skill dir)
+# For manual checks, load it from wherever the consuming repo lives, e.g.:
+# source "$(git rev-parse --show-toplevel)/.env.cli"
+source "$(git rev-parse --show-toplevel)/.env.cli"
 echo "MLX_AUTOMATION_TOKEN: ${MLX_AUTOMATION_TOKEN:0:8}..."
 echo "OP_SERVICE_ACCOUNT_TOKEN: ${OP_SERVICE_ACCOUNT_TOKEN:0:8}..."
 
@@ -91,9 +96,8 @@ Write the filtered-active set to `/tmp/tk_active.json` via Write tool (not hered
 4. If no match is found: print a warning and skip that account (can't automate without a profile).
 Run this lookup once per executor invocation, before computing the plan.
 
-**Refresh the script-side accounts cache.** After filtering, also update
-`scripts/warmup/accounts.json` so the Python task scripts see any new or
-removed accounts:
+**Refresh the accounts cache.** After filtering, also update
+`scripts/warmup/accounts.json` in the consuming repo (if it exists) so any auxiliary scripts see current accounts:
 
 1. For each account in the filtered-active set with a `Multilogin Profile ID`:
    - Look up its folder via `POST https://api.multilogin.com/profile/search`
@@ -269,9 +273,9 @@ Once Faiyam confirms the plan, run all sessions directly in this agent thread. *
 1. For each account in the plan, launch its **first session** as a background Bash process. Each session runs:
 
 ```bash
-cd /Users/faiyamrahman/conductor/workspaces/Flooently/managua-v1
+# SKILL_DIR = wherever this skill is installed, e.g. .agents/skills/tiktok-warmup
 uv run --with playwright --with requests python3 -u \
-  .agents/skills/tiktok-warmup/tiktok-warmup-poc.py \
+  "$SKILL_DIR/tiktok-warmup-poc.py" \
   --profile "<platform,handle>" --week <N> --duration <D> \
   --niche-terms "<fuzzed_comma_separated_terms>" \
   [--daily-niche-pct <float>]   # omit if no prior successful sessions today
@@ -334,7 +338,7 @@ Common failure categories and what you can try after Faiyam confirms:
 
 Multilogin's built-in proxy rotation is UI-only — there is no public API endpoint for "Get new IP." So this step is semi-manual.
 
-The script (`scripts/tiktok-warmup-poc.py::start_profile`) raises `PROXY_REFRESH_NEEDED: ...` when the launcher returns a proxy-related error. When you see that exception in a session's stdout:
+The script (`tiktok-warmup-poc.py::start_profile` inside the skill dir) raises `PROXY_REFRESH_NEEDED: ...` when the launcher returns a proxy-related error. When you see that exception in a session's stdout:
 
 1. Do NOT mark the session failed yet. Tell Faiyam:
    > "Proxy error on **<account name>** profile launch. Please (1) open Multilogin, (2) find the profile, (3) click 'Get new IP' on its proxy row, (4) wait ~10s for the new IP to connect, (5) reply 'ready' here."
@@ -392,9 +396,9 @@ When every account is done (queue empty OR Faiyam said stop):
 If you edited any skill files or `runtimeLearnings.md` during this run, commit them as a normal change:
 
 ```bash
-cd /Users/faiyamrahman/Development/Flooently
+cd "$(git rev-parse --show-toplevel)"
 git checkout -b warmup-learnings/$(date -u +%Y%m%d-%H%M)
-git add .claude/skills/tiktok-warmup/ docs/core/workLog/growth/
+git add .agents/skills/tiktok-warmup/ docs/core/workLog/growth/
 git commit -m "chore(tiktok-warmup): manual run $(date -u +%Y-%m-%d)"
 git push -u origin HEAD
 gh pr create --title "tiktok-warmup manual run $(date -u +%Y-%m-%d)" --body "Manual /execute-warmups run."
