@@ -264,7 +264,7 @@ Pre-run — compute daily niche %:
   daily_niche_pct = Σ(fyp_niche_pct × videos_watched) / Σ(videos_watched). If no qualifying rows, omit --daily-niche-pct.
 
 Step 1 — Run (from /Users/faiyamrahman/conductor/workspaces/Flooently/douala):
-  uv run --with playwright --with requests python3 -u scripts/tiktok-warmup-poc.py \
+  uv run --with playwright --with requests python3 -u .agents/skills/tiktok-warmup/tiktok-warmup-poc.py \
     --profile "<platform,handle>" --week <N> --duration <D> \
     --niche-terms "<comma_separated_search_terms>" \
     --daily-niche-pct <daily_niche_pct>   ← omit entirely if no prior data
@@ -332,7 +332,7 @@ Then stop — no need to monitor. The triggers run independently. Faiyam can che
 Each trigger agent handles its own error reporting (Telegram escalation + Airtable Session Log error row). If Faiyam reports a failed session or wants to re-run one, manually invoke the trigger or run the script directly:
 
 ```bash
-python3 -u /Users/faiyamrahman/conductor/workspaces/Flooently/douala/scripts/tiktok-warmup-poc.py --profile "<handle>" --week <N> --duration <D>
+python3 -u .agents/skills/tiktok-warmup/tiktok-warmup-poc.py --profile "<handle>" --week <N> --duration <D>
 ```
 
 Do NOT spam BashOutput — poll each shell every 60–90 seconds. Between polls, if you have nothing else to do, just wait (use `Bash` with a `sleep` of 60–90s, or use the Monitor tool if available).
@@ -382,7 +382,7 @@ Common failure categories and what you can try after Faiyam confirms:
 
 Multilogin's built-in proxy rotation is UI-only — there is no public API endpoint for "Get new IP." So this step is semi-manual.
 
-The script (`scripts/tiktok-warmup-poc.py::start_profile`) raises `PROXY_REFRESH_NEEDED: ...` when the launcher returns a proxy-related error. When you see that exception in a session's stdout:
+The script (`.agents/skills/tiktok-warmup/tiktok-warmup-poc.py::start_profile`) raises `PROXY_REFRESH_NEEDED: ...` when the launcher returns a proxy-related error. When you see that exception in a session's stdout:
 
 1. Do NOT mark the session failed yet. Tell Faiyam:
    > "Proxy error on **<account name>** profile launch. Please (1) open Multilogin, (2) find the profile, (3) click 'Get new IP' on its proxy row, (4) wait ~10s for the new IP to connect, (5) reply 'ready' here."
