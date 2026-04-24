@@ -68,12 +68,16 @@ If pre-flight fails, do NOT schedule any sessions. Fix the issue first, then re-
 
 ## STEP 2 — Pull active accounts from Airtable
 
-Use the Airtable MCP (`mcp__b7c70c01-304b-4dc7-9a2d-89d24f14ebb7__list_records_for_table`), **never curl/REST**.
+Use the Airtable REST API with `$AIRTABLE_ACCESS_TOKEN` from `.env.cli`. **Never use the Airtable MCP** — see `airtableRef.md` for the canonical reason and API patterns.
 
-- Base ID: `appfTuMpiXafoRNJG`
-- Accounts table: `tbljagCt5kJaBPNUl`
+First resolve the base and table IDs using the schema resolver:
+```bash
+source "$(git rev-parse --show-toplevel)/.env.cli"
+eval "$(python3 "$(git rev-parse --show-toplevel)/.agents/skills/tiktok-warmup/resolve_airtable_schema.py" --print-env)"
+```
+This sets `$AIRTABLE_BASE_ID`, `$AIRTABLE_ACCOUNTS_TABLE`, `$AIRTABLE_SESSION_LOG_TABLE`.
 
-Filter for `Active = true`. Pull fields: Name, Brand, Timezone, UTC Offset, Waking Start, Waking End, Warmup Start Date, Multilogin Profile ID, **Paused Until**, **Pause Reason**, **Search Terms** (`fldnFSwwpxVigKXel`).
+Filter for `AND({Active}=TRUE(),{Brand}="$AIRTABLE_BRAND")`. Pull fields: Name, Brand, Timezone, UTC Offset, Waking Start, Waking End, Warmup Start Date, Multilogin Profile ID, **Paused Until**, **Pause Reason**, **Search Terms** (`fldnFSwwpxVigKXel`).
 
 **Filter out paused accounts immediately.** For each record where `Paused Until` is set and `Paused Until > now_utc`, drop it from the working set and print one line:
 
@@ -81,34 +85,20 @@ Filter for `Active = true`. Pull fields: Name, Brand, Timezone, UTC Offset, Waki
   Isabella Restrepo: PAUSED until 2026-04-18 02:57 UTC — TikTok login lockout. Skipping.
 ```
 
-If `Paused Until ≤ now_utc`, the pause has expired — treat the account as normal (and optionally clear the fields via Airtable MCP so the row is tidy).
+If `Paused Until ≤ now_utc`, the pause has expired — treat the account as normal (and optionally clear the fields via the REST API so the row is tidy).
 
 **Email recovery check.** Also pull the `Email Recovery` field (`fldmySQAr2mZjw6ne`) for each account. For any account where this field is not `"Backed Up"`:
 - Print a warning in the plan summary (e.g. `⚠️  Sofia Reyes: email recovery NOT backed up — fix before running`)
 - Still include the account in the plan (don't block warmup), but make the warning prominent so Faiyam sees it and can act
 
-Write the filtered-active set to `/tmp/tk_active.json` via Write tool (not heredoc). Use this to drive the plan.
+Write the filtered-active set to `/tmp/tk_active.json` via Write tool (not heredoc). Do not persist account data anywhere in the repo — all runtime state lives under `/tmp/`. Use this to drive the plan.
 
 **Auto-fill missing Multilogin Profile IDs.** For any active account where `Multilogin Profile ID` is blank:
 1. Call `POST https://api.multilogin.com/profile/search` (body `{"search_text":"","is_removed":false,"limit":100,"offset":0}`) with `Authorization: Bearer $MLX_AUTOMATION_TOKEN`.
 2. Match profiles by TikTok handle or account name — look for profile names containing the handle (e.g. `blazemoney_latam`) or the account name (e.g. `Sofia Reyes`). Only match profiles with `(TikTok)` in the name or that clearly correspond to a TikTok persona.
-3. If a match is found: update the Airtable Accounts record via MCP (`fld9knhdqkuYzwCfJ`) with the found profile ID, then include the account in the plan as normal.
+3. If a match is found: update the Airtable Accounts record via REST API (`fld9knhdqkuYzwCfJ`) with the found profile ID, then include the account in the plan as normal.
 4. If no match is found: print a warning and skip that account (can't automate without a profile).
 Run this lookup once per executor invocation, before computing the plan.
-
-**Refresh the accounts cache.** After filtering, also update
-`scripts/warmup/accounts.json` in the consuming repo (if it exists) so any auxiliary scripts see current accounts:
-
-1. For each account in the filtered-active set with a `Multilogin Profile ID`:
-   - Look up its folder via `POST https://api.multilogin.com/profile/search`
-     (body `{"search_text":"","is_removed":false,"limit":100,"offset":0}`) and match by profile ID
-   - Generate a stable slug: lowercased first word of Name (e.g. "Sebastian Vargas"→`sebastian`, "Blaze Money"→`blaze_money`). If two accounts collide, extend to include the second word.
-   - Include: `name`, `handle` (TikTok Username), `profile_id`, `folder_id`, `op_item` (`"TikTok - <Name>"`), `brand`, `tiktok_email`
-2. Write the new JSON with `_last_refreshed_utc` set to now. Keep the fallback
-   `ACCOUNTS` dict in `_common.py` in sync manually only when you need an
-   offline safety net.
-
-Full protocol: [`.claude/skills/tiktok-warmup/accountsRef.md`](.claude/skills/tiktok-warmup/accountsRef.md).
 
 ---
 
@@ -297,7 +287,7 @@ uv run --with playwright --with requests python3 -u \
 
 Parse the JSON summary from stdout. Expected fields: `duration_min`, `videos_watched`, `niche_videos`, `fyp_niche_pct`, `likes`, `follows`, `comments`, `searches`, `activities`, `start_page`.
 
-**Write a Session Log row** (`tbluS09ymOa9oBDwA`) via Airtable MCP:
+**Write a Session Log row** (resolve table ID via resolver, then use REST API):
 - Timestamp UTC: session end time
 - Account Name
 - Warmup Day (computed earlier)
@@ -353,7 +343,7 @@ Do not loop refresh→retry more than twice for a single account in one run.
 If the warmup script raises an exception containing `TIKTOK_LOCKOUT_24H` or the screenshot/error shows "Maximum number of attempts reached" on the TikTok login screen:
 
 1. **Do NOT retry the login for this account.** Every retry extends TikTok's lockout window and looks more suspicious.
-2. **Update the account in Airtable Accounts** (`tbljagCt5kJaBPNUl`):
+2. **Update the account in Airtable Accounts** (use REST API — resolve table ID via resolver):
    - `Paused Until` (fldHbm3Oq5MBlYqcZ): `now_utc + 24h` as ISO string, e.g. `2026-04-18T02:57:09.000Z`
    - `Pause Reason` (fldnMsGzer8SYUkX6): `TikTok login lockout — Maximum number of attempts reached (seen YYYY-MM-DD)`
 3. Mark this run's session for that account as **failed** in Session Log with Error = `TikTok login lockout, account auto-paused until <timestamp>`.
@@ -379,15 +369,7 @@ The simplest pattern:
 When every account is done (queue empty OR Faiyam said stop):
 
 1. Print a per-account summary: total minutes done today, sessions completed/failed, any accounts where Faiyam intervened.
-2. Append a dated entry to `docs/core/workLog/growth/<YYYY-MM-DD>.md` (create if missing). One-liner per account. Example:
-   ```
-   [2026-04-17] Warmup run (manual via /execute-warmups)
-     - Sebastian Vargas: 48 min (2 sessions), 0 issues
-     - Lucia Gonzalez: rest day
-     - Diego Salazar: 35 min (1 of 2 — CAPTCHA on 2nd, Faiyam solved, re-ran)
-     - Sophia Reyes: 15 min (1 session)
-   ```
-3. If you learned anything new (new failure mode, new TikTok UI change, new gotcha) — append a dated section to `runtimeLearnings.md` **in this same session**, before exiting.
+2. If you learned anything new (new failure mode, new TikTok UI change, new gotcha) — append a dated section to `runtimeLearnings.md` **in this same session**, before exiting.
 
 ---
 
@@ -398,20 +380,20 @@ If you edited any skill files or `runtimeLearnings.md` during this run, commit t
 ```bash
 cd "$(git rev-parse --show-toplevel)"
 git checkout -b warmup-learnings/$(date -u +%Y%m%d-%H%M)
-git add .agents/skills/tiktok-warmup/ docs/core/workLog/growth/
+git add .agents/skills/tiktok-warmup/
 git commit -m "chore(tiktok-warmup): manual run $(date -u +%Y-%m-%d)"
 git push -u origin HEAD
 gh pr create --title "tiktok-warmup manual run $(date -u +%Y-%m-%d)" --body "Manual /execute-warmups run."
 gh pr merge --merge --auto
 ```
 
-Skip if no file changes. If only workLog changed and no skill edits, still commit — the growth log is the user's record.
+Skip if no skill files changed.
 
 ---
 
 ## Hard rules (repeat of runtimeLearnings.md highlights)
 
-- **Airtable: ALWAYS use the MCP.** Never curl, never REST, never load env vars for Airtable.
+- **Airtable: ALWAYS use the REST API with `$AIRTABLE_ACCESS_TOKEN`.** Never use the Airtable MCP — see `airtableRef.md`.
 - **Never chain bash commands with `&&`** in this workflow — breaks unattended runs. Each bash call = one short command.
 - **Never prepend `source .env.cli &&`** to the POC script. It loads the file itself.
 - **Searches Done field = string.** Passing an int throws 422.
