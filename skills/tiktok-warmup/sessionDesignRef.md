@@ -69,20 +69,50 @@ occasional explicit tasks to refresh signals and prevent drift.
 
 ## Picking search terms and hashtag slugs
 
-Both `niche_search` and `browse_hashtag` need niche-relevant inputs. Generate
-fresh per session via:
+The Airtable `Search Terms` field holds a stable pool of ~12–15 niche-relevant queries per account (set at adoption time via `adoptAccountRef.md` Step 11). Every session draws from this pool — **but never verbatim the same string twice.** Apply fuzzing so TikTok's pattern-detection doesn't flag us for repeating identical queries.
+
+### Mix ratios per session
+
+When picking which term to use for a given `niche_search` call, apply fuzzing with roughly this distribution:
+
+| Mode | Share | What it looks like |
+|------|-------|--------------------|
+| **Verbatim** — use the pool term as-is | ~50% | `"USDC a pesos"` → `"USDC a pesos"` |
+| **Minor typo** — single-char edit | ~20% | `"USDC a pesos"` → `"USDC a peos"` (skip letter) or `"USDC a peso"` (missing s) |
+| **Word reorder / micro-paraphrase** | ~15% | `"USDC a pesos"` → `"pesos a USDC"` or `"cambiar USDC a pesos"` |
+| **Semantic cousin** — related term not in pool | ~10% | `"USDC a pesos"` → `"stablecoin a pesos"` or `"dolar digital LATAM"` |
+| **Language flip** (bilingual accounts only) | ~5% | `"USDC a pesos"` → `"USDC to pesos"` |
+
+Realistic typo patterns for a desktop QWERTY keyboard: adjacent-key swaps (`usdc`→`usdv`), doubled letters (`USDC`→`USDCC`), missed letter (`stablecoin`→`stablecon`), transposed letters (`crypto`→`crytpo`). Avoid unrealistic typos (swapping letters that aren't adjacent on the keyboard).
+
+### Execution
+
+The agent applies fuzzing at plan time (in `/execute-warmups` Step 4), not inside the Python scripts. For each session that includes a `niche_search` task:
+
+1. Pick a term from the Airtable pool (rotate — don't repeat the same pool-term within a 7-day window if possible)
+2. Roll for fuzzing mode per the distribution above
+3. Apply the fuzz, producing the actual search string
+4. Pass it to `niche_search.py` as `--term "<fuzzed string>"`
+5. Log the actual string used in Session Log `Searches Done` so we can audit variation
+
+### What NOT to do
+
+- ❌ Cache the fuzzed versions into Airtable — pool terms are inputs, fuzzing is stateless per session
+- ❌ Use the same fuzzed variant twice in one session
+- ❌ Apply fuzzing to `browse_hashtag` inputs (hashtags must slugify cleanly; fuzzing breaks the `slugify()` mapping)
+- ❌ Introduce typos so extreme the query returns no results (TikTok returning zero videos is a worse signal than a repeated exact query)
+
+### Regenerating the pool
+
+If an account's Search Terms pool is exhausted, stale, or clearly mismatched with the current FYP niche, regenerate via the canonical LLM prompt:
 
 ```bash
-claude -p --model claude-sonnet-4-6 "Generate 12 varied TikTok search queries
-a real creator in this niche would plausibly search for. Return ONLY the
-queries as a comma-separated list, nothing else.
+claude -p --model claude-sonnet-4-6 "Generate 12–15 varied TikTok search queries a real creator in this niche would plausibly search for. Match the language to the audience. Return ONLY the queries as a comma-separated list, nothing else.
 
-Niche: <Airtable Niche Description field>"
+Niche: <the Niche Description field from Airtable>"
 ```
 
-Pass different terms to `niche_search` and `browse_hashtag` in the same session
-to diversify the signal. `browse_hashtag` will `slugify()` the term
-(lowercase, alphanum-only, max 40 chars) to form a valid tag URL.
+Match language to the FYP (Spanish for LATAM accounts, English for US, etc). Pass different terms to `niche_search` and `browse_hashtag` in the same session — `browse_hashtag` will `slugify()` the term (lowercase, alphanum-only, max 40 chars) to form a valid tag URL.
 
 ## What `scroll_fyp` is still for
 

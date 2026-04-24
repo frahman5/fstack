@@ -30,10 +30,10 @@ source .env.cli 2>/dev/null || true
 OP_VAULT_STATUS="❌ OP_SERVICE_ACCOUNT_TOKEN not set"
 if [ -n "$OP_SERVICE_ACCOUNT_TOKEN" ]; then
   VAULTS=$(OP_SERVICE_ACCOUNT_TOKEN=$OP_SERVICE_ACCOUNT_TOKEN op vault list --format=json 2>&1)
-  if echo "$VAULTS" | python3 -c "import json,sys; names=[v['name'] for v in json.load(sys.stdin)]; assert 'TikTok' in names" 2>/dev/null; then
-    OP_VAULT_STATUS="✅ 1Password TikTok vault accessible"
+  if echo "$VAULTS" | python3 -c "import json,sys; names=[v['name'] for v in json.load(sys.stdin)]; assert 'Tiktok' in names" 2>/dev/null; then
+    OP_VAULT_STATUS="✅ 1Password Tiktok vault accessible"
   else
-    OP_VAULT_STATUS="❌ TikTok vault not found (wrong OP token, or vault not shared with this service account)"
+    OP_VAULT_STATUS="❌ Tiktok vault not found (wrong OP token, or vault not shared with this service account)"
   fi
 fi
 
@@ -45,9 +45,16 @@ MLX_STATUS="❌ MLX_AUTOMATION_TOKEN not set"
 AM_STATUS="❌ AGENTMAIL_KEY not set"
 [ -n "$AGENTMAIL_KEY" ] && AM_STATUS="✅ AGENTMAIL_KEY set"
 
-# Airtable
-AT_STATUS="⚠️  No AIRTABLE_ACCESS_TOKEN (assuming Airtable MCP is connected)"
-[ -n "$AIRTABLE_ACCESS_TOKEN" ] && AT_STATUS="✅ AIRTABLE_ACCESS_TOKEN set"
+# Airtable — token must be present AND resolver must find a matching base
+AT_STATUS="❌ AIRTABLE_ACCESS_TOKEN not set"
+if [ -n "$AIRTABLE_ACCESS_TOKEN" ]; then
+  RESOLVER_OUT=$(python3 .agents/skills/tiktok-warmup/resolve_airtable_schema.py 2>&1)
+  if [ $? -eq 0 ]; then
+    AT_STATUS="✅ $(echo "$RESOLVER_OUT" | head -1)"
+  else
+    AT_STATUS="❌ Airtable resolver failed: $(echo "$RESOLVER_OUT" | tail -2 | head -1)"
+  fi
+fi
 
 echo ""
 echo "🔍 Environment Health"
@@ -84,6 +91,7 @@ Report the output to the user before proceeding. If warmup prerequisites (MLX + 
 | [runtimeLearnings.md](runtimeLearnings.md) | Operational learnings from live sessions - **read before every execution**. |
 | [accountCreationRef.md](accountCreationRef.md) | How to create TikTok accounts and store credentials in 1Password. |
 | [createTiktokRef.md](createTiktokRef.md) | Full interactive protocol for /create-tiktok — step-by-step account creation walkthrough. |
+| [adoptAccountRef.md](adoptAccountRef.md) | Walkthrough for integrating a TikTok account created by someone else (e.g. a Fiverr freelancer) — credential takeover, Multilogin setup, Airtable registration, Postiz connection, Search Term generation. |
 | [executeWarmupsRef.md](executeWarmupsRef.md) | Full protocol for /execute-warmups — plans and runs warmup sessions across all active accounts. |
 
 ## Protocols
@@ -92,6 +100,7 @@ Report the output to the user before proceeding. If warmup prerequisites (MLX + 
 - **Run a one-off browser warmup session**: read multiloginRef.md + browserWarmupRef.md + runtimeLearnings.md, then invoke scripts/tiktok-warmup-poc.py.
 - **Run a mobile warmup session** (rare): read multiloginRef.md + computerUseRef.md + runtimeLearnings.md.
 - **Create a new TikTok account**: trigger `/create-tiktok`. Full protocol in createTiktokRef.md.
+- **Adopt an externally-created account** (e.g. from Fiverr): read adoptAccountRef.md and walk the user through it step-by-step.
 - **Multilogin API operations**: read multiloginRef.md.
 
 ## Design philosophy

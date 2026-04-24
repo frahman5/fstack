@@ -108,6 +108,40 @@ Full protocol: [`.claude/skills/tiktok-warmup/accountsRef.md`](.claude/skills/ti
 
 ---
 
+## STEP 2.5 — Account health audit
+
+Before planning sessions, audit every active account for missing or inconsistent data. Surface issues to the user so they can fix them now rather than discovering them mid-run or (worse) from a silent skip.
+
+Run these checks on each active account pulled from Airtable:
+
+| Check | Severity | Action |
+|-------|----------|--------|
+| `Search Terms` is empty | **error** | Block this account — the warmup scripts need it. Prompt user to generate terms (see `adoptAccountRef.md` Step 11) |
+| `Warmup Start Date` is empty | **error** | Block this account — mode determination needs it. Prompt user to set it |
+| `Multilogin Profile ID` is empty | **error** | Block this account — cannot launch without it. Already handled by the auto-fill logic below, surface only if auto-fill also fails |
+| `TikTok Email` is empty | **warn** | Account can run but OTP flow will break if a re-login is needed |
+| `AgentMail Inbox` is empty | **warn** | Same — OTP retrieval won't route correctly |
+| `Email Recovery` ≠ "Backed Up" | **warn** | Account can run but recovery is uncertain |
+| `Niche Description` is empty | **warn** | Search-term regeneration will be harder later |
+| `Active=true` + account just created (< 1 day ago) | **info** | Just a heads-up that it's a brand-new account |
+
+**Output format** — print a single block summarizing the audit before the plan:
+
+```
+📋 Health audit (5 accounts):
+   ✅ blazemoney_latam — clean
+   ✅ blazemoney_agents — clean
+   ⚠️  blazemoney_stables — Email Recovery: Not Set Up
+   ❌ blazemoney_crypto — Search Terms missing, Warmup Start Date missing (BLOCKING: this account will be skipped)
+   ❌ sofia_reyes — Warmup Start Date missing (BLOCKING)
+```
+
+**Handling errors:** accounts with error-level issues should be **removed from the working set** and NOT included in the day's plan. Tell the user explicitly which accounts got skipped and why. Don't silently move on — the user should decide whether to fix-and-rerun or proceed with what's left.
+
+**Handling warnings:** accounts with warning-level issues stay in the working set. Just surface them in the audit output so the user sees them.
+
+---
+
 ## STEP 3 — Pull today's Session Log
 
 Query Session Log (`tbluS09ymOa9oBDwA`) for rows where `Timestamp UTC` is within the last 24h. Pull fields: Account Name, Duration (min), Videos Watched, FYP Niche % (`fldQHQm3TFzw1lZBC`), Error.
@@ -234,6 +268,11 @@ Step 1 — Run (from /Users/faiyamrahman/conductor/workspaces/Flooently/douala):
     --profile "<platform,handle>" --week <N> --duration <D> \
     --niche-terms "<comma_separated_search_terms>" \
     --daily-niche-pct <daily_niche_pct>   ← omit entirely if no prior data
+
+  IMPORTANT: apply fuzzing to --niche-terms — never pass the Airtable pool terms verbatim every run.
+  See sessionDesignRef.md "Picking search terms and hashtag slugs" for the fuzzing rules
+  (roughly: 50% verbatim, 20% minor typos, 15% reorder/paraphrase, 10% semantic cousin, 5% language flip).
+  The goal: TikTok sees varied, human-like queries, not identical strings repeated across sessions.
 
 Step 2 — Parse JSON summary from stdout. Extract: duration_min, niche_videos, fyp_niche_pct, likes, follows,
   comments (bool), comment_text, searches (int), error.
