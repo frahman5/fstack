@@ -14,10 +14,25 @@ next run uses updated skill**.
 
 ### 1. Setup
 - `cd` to a working clone of the consuming repo (the one that has `.env.cli` with
-  `AIRTABLE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`)
+  `AIRTABLE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, **`AIRTABLE_BRAND`**)
 - Source `.env.cli`
 - Resolve Airtable schema via `resolve_airtable_schema.py`
 - Get current UTC
+
+**Brand scoping is mandatory.** The audit MUST be scoped to a single brand
+(set via `AIRTABLE_BRAND` env var: e.g. `Flooently` or `Blaze`). Each consuming
+repo represents one brand only — Flooently lives in `frahman5/TranslationKeyboard`,
+Blaze lives in its own repo. Every Airtable query in this protocol must include
+`{Brand}="$AIRTABLE_BRAND"` in the `filterByFormula`.
+
+If `AIRTABLE_BRAND` is missing, **abort the run and Telegram-escalate**. Do NOT
+fall back to "audit all brands" — that's how cross-brand bleed happens (it did
+on 2026-04-26).
+
+Also: do NOT fall back to local cache files like `scripts/warmup/accounts.json`.
+Those caches are stale, may contain other-brand entries, and are no longer
+maintained — Airtable is the source of truth. If Airtable is unreachable,
+Telegram-escalate and abort.
 
 ### 2. Pull yesterday's data
 
@@ -30,7 +45,30 @@ curl -s "$URL/rest/v1/warmup_actions?timestamp=gte.$SINCE&order=timestamp.asc&li
   -H "apikey: $KEY" -H "Authorization: Bearer $KEY"
 ```
 
-**From Airtable `Session Log`** — last 24h: per-account roll-up (use the executor's existing query pattern).
+Note: `warmup_actions` is inherently brand-scoped because each repo writes to
+its own Supabase project (Flooently and Blaze use different `SUPABASE_URL`s).
+No additional filter needed.
+
+**From Airtable `Session Log`** — last 24h, brand-filtered:
+
+```bash
+SINCE_AT=$(date -u -v-24H +"%Y-%m-%dT%H:%M:%S.000Z")
+# Step A: pull the brand's active accounts to build a name allow-list
+curl -s -G \
+  -H "Authorization: Bearer $AIRTABLE_ACCESS_TOKEN" \
+  --data-urlencode "filterByFormula=AND({Active}=TRUE(),{Brand}=\"$AIRTABLE_BRAND\",{Type}!=\"Manual\")" \
+  --data-urlencode "fields[]=Name" \
+  "https://api.airtable.com/v0/$AIRTABLE_BASE_ID/$AIRTABLE_ACCOUNTS_TABLE"
+# Step B: pull session log rows for the last 24h, then locally filter to rows
+# whose Account Name is in the allow-list from step A.
+curl -s -G \
+  -H "Authorization: Bearer $AIRTABLE_ACCESS_TOKEN" \
+  --data-urlencode "filterByFormula=IS_AFTER({Timestamp UTC}, \"$SINCE_AT\")" \
+  --data-urlencode "pageSize=100" \
+  "https://api.airtable.com/v0/$AIRTABLE_BASE_ID/$AIRTABLE_SESSION_LOG_TABLE"
+```
+
+**Never query Session Log without filtering by the brand's account allow-list.**
 
 ### 3. Per-account analysis
 
