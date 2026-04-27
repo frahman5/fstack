@@ -46,13 +46,17 @@ print('✅ TikTok vault OK')
 "
 
 # 3. Multilogin launcher is running
-curl -sf http://localhost:45001/api/v1/profile/list > /dev/null && echo "✅ Multilogin launcher OK" || echo "⚠ Multilogin launcher not responding — open the Multilogin desktop app"
+curl -sf https://launcher.mlx.yt:45001/api/v1/profile/statuses -H "Authorization: Bearer $MLX_AUTOMATION_TOKEN" -k > /dev/null && echo "✅ Multilogin launcher OK" || echo "⚠ Multilogin launcher not responding — open the Multilogin desktop app"
+
+# 4. Schema validation — confirm Airtable + Supabase match the canonical schema
+python3 "$(git rev-parse --show-toplevel)/.agents/skills/tiktok-warmup/validate_schema.py"
 ```
 
 **What each check catches:**
 - Missing/wrong `OP_SERVICE_ACCOUNT_TOKEN` → auto-login will fail for any logged-out profile
 - `TikTok` vault not found → the token is from the wrong 1Password account or lacks vault access (this broke warmups on 2026-04-22 after engineer onboarding split the 1Password accounts)
 - Multilogin not running → all profile launches will fail immediately
+- Schema validator non-zero exit → Airtable or Supabase has drifted from `canonicalSchema.json`. Drift can cause silent data corruption (e.g., writing to a field that was renamed). The validator prints exactly what to fix; re-run `python3 .../validate_schema.py --apply` for additive Airtable fixes (new fields). Schema type changes and Supabase DDL must be applied manually.
 
 If pre-flight fails, do NOT schedule any sessions. Fix the issue first, then re-invoke `/execute-warmups`.
 
@@ -62,7 +66,8 @@ If pre-flight fails, do NOT schedule any sessions. Fix the issue first, then re-
 
 1. Read `runtimeLearnings.md` (it has real bug fixes — do not skip).
 2. Read `browserWarmupRef.md` (session mechanics).
-3. Get current UTC time: `date -u +"%Y-%m-%dT%H:%M:%SZ"`.
+3. Read `auditLogs.md` — recent autonomous changes made by the nightly review agent. Skim the last 5 entries. If anything affects today's run (e.g. comment frequency was raised, search-term refresh logic was added), keep that context in mind during execution.
+4. Get current UTC time: `date -u +"%Y-%m-%dT%H:%M:%SZ"`.
 
 ---
 
@@ -77,7 +82,23 @@ eval "$(python3 "$(git rev-parse --show-toplevel)/.agents/skills/tiktok-warmup/r
 ```
 This sets `$AIRTABLE_BASE_ID`, `$AIRTABLE_ACCOUNTS_TABLE`, `$AIRTABLE_SESSION_LOG_TABLE`.
 
-Filter for `AND({Active}=TRUE(),{Brand}="$AIRTABLE_BRAND")`. Pull fields: Name, Brand, Timezone, UTC Offset, Waking Start, Waking End, Warmup Start Date, Multilogin Profile ID, **Paused Until**, **Pause Reason**, **Search Terms** (`fldnFSwwpxVigKXel`).
+Filter for `AND({Active}=TRUE(),{Brand}="$AIRTABLE_BRAND",{Type}!="Manual")`. Pull fields: Name, Brand, Timezone, UTC Offset, Waking Start, Waking End, Warmup Start Date, Multilogin Profile ID, **Paused Until**, **Pause Reason**, **Search Terms** (`fldnFSwwpxVigKXel`), **Type**, **Pending Action** (`fldJFDBUcxR1QOayB`), **Health Score** (`fldnIiB1TpkFOk5Qg`).
+
+**Manual accounts are excluded entirely.** Accounts with `Type = "Manual"` are self-managed by the founder and never included in automated warmup runs. The filter above excludes them at the query level so they never appear in the health audit or plan.
+
+### Pending Actions (from the nightly audit agent)
+
+For each active account, check the `Pending Action` field. If non-empty, surface it prominently in the plan output **before** the daily session list — this is structured guidance from the nightly review agent that should shape today's run. Format:
+
+```
+🔔 Pending actions:
+   tiktok,flooently_spanish: niche % dropped to 0% on Day 7 — refresh search terms before next run
+   tiktok,flooently_italian: 0 comments in 5 days — bump comment frequency to ≥1/session this week
+```
+
+**Acting on the pending action:** the executor decides whether the action is auto-executable (e.g. "refresh search terms" → call Claude to regen, write back to Airtable) or requires Faiyam confirmation. If auto-executed, clear the `Pending Action` field via PATCH at the end of that account's run. If surfaced to Faiyam, leave the field in place until a human resolves it.
+
+Print the current `Health Score` in the plan summary as a quick at-a-glance signal (e.g. `wk2, day10, health=82`). The score is updated at the end of each session by the executor (see Step 6).
 
 **Filter out paused accounts immediately.** For each record where `Paused Until` is set and `Paused Until > now_utc`, drop it from the working set and print one line:
 
@@ -113,11 +134,91 @@ Run these checks on each active account pulled from Airtable:
 | `Search Terms` is empty | **error** | Block this account — the warmup scripts need it. Prompt user to generate terms (see `adoptAccountRef.md` Step 11) |
 | `Warmup Start Date` is empty | **error** | Block this account — mode determination needs it. Prompt user to set it |
 | `Multilogin Profile ID` is empty | **error** | Block this account — cannot launch without it. Already handled by the auto-fill logic below, surface only if auto-fill also fails |
+| `Timezone` is empty | **auto-heal** | Infer from Multilogin proxy country code, update Airtable (see below) |
 | `TikTok Email` is empty | **warn** | Account can run but OTP flow will break if a re-login is needed |
-| `AgentMail Inbox` is empty | **warn** | Same — OTP retrieval won't route correctly |
+| `AgentMail Inbox` is empty | **auto-heal** | Send a test email to the TikTok email via AgentMail, verify receipt, update Airtable if confirmed (see below) |
 | `Email Recovery` ≠ "Backed Up" | **warn** | Account can run but recovery is uncertain |
-| `Niche Description` is empty | **warn** | Search-term regeneration will be harder later |
+| `Niche Description` is empty | **auto-heal** | Generate from Search Terms via `claude -p` and write back to Airtable (see below) |
 | `Active=true` + account just created (< 1 day ago) | **info** | Just a heads-up that it's a brand-new account |
+
+### Auto-healing Timezone
+
+If `Timezone` is empty, infer it from the Multilogin profile's proxy username. The proxy username contains a `country-XX` segment (e.g. `country-br`, `country-mx`) — extract the 2-letter country code and map it to a timezone:
+
+| Code | Timezone | UTC Offset |
+|------|----------|------------|
+| br | America/Sao_Paulo | -03:00 |
+| mx | America/Mexico_City | -06:00 |
+| co | America/Bogota | -05:00 |
+| ar | America/Argentina/Buenos_Aires | -03:00 |
+| ve | America/Caracas | -04:00 |
+| pe | America/Lima | -05:00 |
+| cl | America/Santiago | -04:00 |
+| ec | America/Guayaquil | -05:00 |
+| uy | America/Montevideo | -03:00 |
+| cr | America/Costa_Rica | -06:00 |
+| us | America/New_York | -05:00 |
+| gb | Europe/London | +01:00 |
+| de | Europe/Berlin | +02:00 |
+| fr | Europe/Paris | +02:00 |
+| it | Europe/Rome | +02:00 |
+| es | Europe/Madrid | +02:00 |
+| pt | Europe/Lisbon | +01:00 |
+
+To get the proxy username, call `POST https://api.multilogin.com/profile/search` with the profile ID and read `proxy.username`. Extract country code with a regex: `country-([a-z]{2})`.
+
+Update Airtable with `Timezone`, `UTC Offset`, and `Country` (full name) fields via REST PATCH. Print: `  🔧 auto-healed Timezone for <slug>: America/Sao_Paulo (inferred from proxy country-br)`. If the country code isn't in the table above, fall back to UTC, label it `[UTC — country code unknown]`, and surface a warning.
+
+### Auto-healing AgentMail Inbox (forwarding verification)
+
+If `AgentMail Inbox` is empty but `TikTok Email` is set, test whether that email already forwards to `tiktok@agentmail.to` — and if confirmed, write the field automatically.
+
+**Step 1 — send a test email to the TikTok email address:**
+
+```bash
+AGENTMAIL_KEY=$(grep AGENTMAIL_KEY .env.cli | cut -d= -f2-)
+curl -s -X POST "https://api.agentmail.to/v0/inboxes/tiktok@agentmail.to/messages/send" \
+  -H "Authorization: Bearer $AGENTMAIL_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"to\":[\"$TIKTOK_EMAIL\"],\"subject\":\"AgentMail forwarding test\",\"text\":\"Automated forwarding check. Please ignore.\"}"
+```
+
+**Step 2 — wait up to 30s (poll every 5s), checking for the test email in AgentMail:**
+
+```bash
+# Look for a recent message in AgentMail where to[] contains TIKTOK_EMAIL
+# and subject matches "AgentMail forwarding test" and created_at is within the last 60s
+curl -s "https://api.agentmail.to/v0/inboxes/tiktok@agentmail.to/messages?limit=10" \
+  -H "Authorization: Bearer $AGENTMAIL_KEY"
+```
+
+A message is confirmed if: `to` contains `$TIKTOK_EMAIL`, subject matches, and `created_at` is within the last 60 seconds.
+
+**Step 3 — act on result:**
+
+- **Forwarding confirmed:** update `AgentMail Inbox` field in Airtable to `tiktok@agentmail.to` via REST PATCH, print `  🔧 auto-healed AgentMail Inbox for <slug> (forwarding confirmed)`, treat account as healthy.
+- **No message after 30s:** print `  ⚠️  <slug>: AgentMail Inbox missing and forwarding NOT confirmed for <tiktok_email> — set up email forwarding to tiktok@agentmail.to then re-run`. Leave the account in the working set (can still run; OTP flow just won't be automated).
+
+**Note:** The test message sent FROM AgentMail will appear in AgentMail's own sent/inbox because it originated there. Filter for messages where `to[]` contains `$TIKTOK_EMAIL` (not `tiktok@agentmail.to`) to confirm the round-trip forward.
+
+### Auto-healing Niche Description
+
+If `Niche Description` is empty but `Search Terms` is set, generate and save it automatically — no user intervention needed.
+
+```bash
+NICHE=$(claude -p --model claude-haiku-4-5-20251001 --bare "Based on these TikTok search terms, write a 1–2 sentence niche description for this account's content focus. Be specific about audience and content style. Terms: <search_terms>")
+```
+
+Then write it back via the Airtable REST API:
+
+```bash
+curl -s -X PATCH "https://api.airtable.com/v0/$AIRTABLE_BASE_ID/$AIRTABLE_ACCOUNTS_TABLE/$RECORD_ID" \
+  -H "Authorization: Bearer $AIRTABLE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"fields\":{\"Niche Description\":\"$NICHE\"}}"
+```
+
+Print one line: `  🔧 auto-healed Niche Description for <slug>` and treat the account as fully healthy. Do this before the audit output block so the final status reflects the healed state.
 
 **Output format** — print a single block summarizing the audit before the plan:
 
@@ -245,10 +346,18 @@ Account display format in all plans and summaries: `platform,handle` (e.g. `tikt
 
 ```
 Plan for 2026-04-18:
-  tiktok,flooently_spanish  (wk1, day 3): 40 min left → 4 sessions: 7min@14:30, 12min@16:45, 3min@19:10, 18min@21:00
+  tiktok,flooently_spanish  (wk1, day 3): 40 min left → 4 sessions: 7min@14:30, 12min@16:45, 3min@19:10, 18min@21:00  [America/Costa_Rica local]
   tiktok,flooently_italian  (wk1, day 2): REST DAY — skip
-  tiktok,blazemoney_latam   (wk1, day 4): 30 min left → 3 sessions: 5min@13:20, 22min@17:40, 3min@21:30
+  tiktok,blazemoney_latam   (wk1, day 4): 30 min left → 3 sessions: 5min@13:20, 22min@17:40, 3min@21:30  [America/Bogota local]
 ```
+
+**Session times must be shown in two timezones side by side:**
+1. **Faiyam's local time** — detect the machine's timezone at runtime (`date +"%Z %z"`) and use that as the primary reference
+2. **Account's local time** — from the `Timezone` field in Airtable
+
+Format: `Xmin@HH:MM<MachineZone>/HH:MM<AccountZone>` — e.g. `7min@23:13EDT/21:13CostaRica`
+
+Compute start times by taking the current wall-clock time, adding sequential session durations plus the 2–5 min inter-session gaps. If `Timezone` is missing for an account (should be auto-healed above), fall back to UTC and label it `UTC`.
 
 **Before scheduling anything: ask Faiyam "looks good? (yes to proceed)"** and wait for confirmation.
 
@@ -264,10 +373,16 @@ Once Faiyam confirms the plan, run all sessions directly in this agent thread. *
 
 ```bash
 # SKILL_DIR = wherever this skill is installed, e.g. .agents/skills/tiktok-warmup
+# Generate one --session-id per session (uuidgen) so all action-log rows for that
+# session group together in Supabase. The --account-slug + --warmup-day are
+# required for the nightly audit agent to slice action logs per-account/per-day.
 uv run --with playwright --with requests python3 -u \
   "$SKILL_DIR/tiktok-warmup-poc.py" \
   --profile "<platform,handle>" --week <N> --duration <D> \
   --niche-terms "<fuzzed_comma_separated_terms>" \
+  --account-slug "<platform,handle>" \
+  --session-id "$(uuidgen)" \
+  --warmup-day <N> \
   [--daily-niche-pct <float>]   # omit if no prior successful sessions today
 ```
 
@@ -299,6 +414,35 @@ Parse the JSON summary from stdout. Expected fields: `duration_min`, `videos_wat
 - Error: blank on success
 
 Skip the old Scheduled Sessions table entirely — we're not using it anymore.
+
+### 5b.1 — Recompute and write Health Score
+
+After each successful Session Log row write, recompute the account's `Health Score` (0–100) using the helper script. Inputs come from the last 7 days of Session Log rows for that account:
+
+- `niche_pct`     = weighted avg of `FYP Niche %` (weighted by Duration min)
+- `follow_rate`   = total `Follows` / total `videos_watched` (videos_watched not in Session Log — derive from Supabase `warmup_actions` count where action_type='video_watch')
+- `comment_rate`  = total `Comment Left` (count where TRUE) / total session count
+- `consistency`   = (distinct days with ≥1 successful session) / (days since min(Warmup Start Date, today-7))
+- `error_rate`    = (sessions with non-blank Error) / (total sessions)
+
+Then call:
+
+```bash
+SCORE=$(python3 "$SKILL_DIR/compute_health_score.py" \
+  --niche-pct $NICHE_PCT --follow-rate $FOLLOW_RATE \
+  --comment-rate $COMMENT_RATE --consistency $CONSISTENCY --error-rate $ERROR_RATE)
+```
+
+PATCH the Accounts row:
+
+```bash
+curl -s -X PATCH "https://api.airtable.com/v0/$AIRTABLE_BASE_ID/$AIRTABLE_ACCOUNTS_TABLE/$ACCOUNT_REC_ID" \
+  -H "Authorization: Bearer $AIRTABLE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"fields\":{\"Health Score\":$SCORE}}"
+```
+
+The score is shown next to each account in the next plan summary so trends are visible at a glance.
 
 ### 5c. If the session failed / hung / got weird
 
