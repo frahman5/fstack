@@ -1,0 +1,332 @@
+{
+  "airtable": {
+    "tables": {
+      "Accounts": {
+        "id": "tbljagCt5kJaBPNUl",
+        "fields": [
+          {
+            "name": "Name",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Type",
+            "type": "singleSelect",
+            "options": {
+              "choices": [
+                "mobile",
+                "browser",
+                "Manual",
+                "Multilogin - Browser",
+                "Multilogin - Mobile"
+              ]
+            }
+          },
+          {
+            "name": "Username",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Active",
+            "type": "checkbox"
+          },
+          {
+            "name": "Brand",
+            "type": "singleSelect",
+            "options": {
+              "choices": [
+                "Flooently",
+                "Blaze"
+              ]
+            }
+          },
+          {
+            "name": "Country",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Timezone",
+            "type": "singleLineText"
+          },
+          {
+            "name": "UTC Offset",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Waking Start",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Waking End",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Multilogin Profile ID",
+            "type": "singleLineText"
+          },
+          {
+            "name": "TikTok Email",
+            "type": "email"
+          },
+          {
+            "name": "TikTok Handle",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Warmup Start Date",
+            "type": "date"
+          },
+          {
+            "name": "Notes",
+            "type": "multilineText"
+          },
+          {
+            "name": "TikTok Password",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Display Name",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Bio",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Profile Photo",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Manual Action",
+            "type": "multilineText"
+          },
+          {
+            "name": "Profile Setup Stage",
+            "type": "singleSelect",
+            "options": {
+              "choices": [
+                "Not started",
+                "Username set",
+                "Name + username set",
+                "Photo added",
+                "Bio added",
+                "Complete"
+              ]
+            }
+          },
+          {
+            "name": "Search Terms",
+            "type": "multilineText"
+          },
+          {
+            "name": "Warmup Day",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          },
+          {
+            "name": "Warmup Notes",
+            "type": "multilineText"
+          },
+          {
+            "name": "Manual Warmup Log",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Paused Until",
+            "type": "dateTime"
+          },
+          {
+            "name": "Pause Reason",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Niche Description",
+            "type": "multilineText"
+          },
+          {
+            "name": "Platform",
+            "type": "singleSelect",
+            "options": {
+              "choices": [
+                "TikTok",
+                "Instagram",
+                "YouTube"
+              ]
+            }
+          },
+          {
+            "name": "Expected Warmup Completion Date",
+            "type": "date"
+          },
+          {
+            "name": "Postiz Integration ID",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Email Recovery",
+            "type": "singleSelect",
+            "options": {
+              "choices": [
+                "Backed Up",
+                "Not Set Up"
+              ]
+            }
+          },
+          {
+            "name": "Studio URL",
+            "type": "url"
+          },
+          {
+            "name": "AgentMail Inbox",
+            "type": "singleSelect",
+            "options": {
+              "choices": [
+                "tiktok@agentmail.to",
+                "tiktokblaze@agentmail.to"
+              ]
+            }
+          },
+          {
+            "name": "Account Status",
+            "type": "singleSelect",
+            "options": {
+              "choices": [
+                "Draft",
+                "Created",
+                "Paused",
+                "Archived"
+              ]
+            }
+          },
+          {
+            "name": "Pending Action",
+            "type": "multilineText"
+          },
+          {
+            "name": "Health Score",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          }
+        ]
+      },
+      "Session Log": {
+        "id": "tbluS09ymOa9oBDwA",
+        "fields": [
+          {
+            "name": "Timestamp UTC",
+            "type": "dateTime"
+          },
+          {
+            "name": "Account Name",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Warmup Day",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          },
+          {
+            "name": "Session # Today",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          },
+          {
+            "name": "Mood",
+            "type": "singleSelect",
+            "options": {
+              "choices": [
+                "passive",
+                "explorer",
+                "fyp",
+                "rabbit-hole",
+                "burst",
+                "doomscroll"
+              ]
+            }
+          },
+          {
+            "name": "Duration (min)",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          },
+          {
+            "name": "Likes",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          },
+          {
+            "name": "Follows",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          },
+          {
+            "name": "Comment Left",
+            "type": "checkbox"
+          },
+          {
+            "name": "Comment Text",
+            "type": "singleLineText"
+          },
+          {
+            "name": "FYP Niche %",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          },
+          {
+            "name": "Searches Done",
+            "type": "singleLineText"
+          },
+          {
+            "name": "Rewatches",
+            "type": "number",
+            "options": {
+              "precision": 0
+            }
+          },
+          {
+            "name": "Error",
+            "type": "singleLineText"
+          }
+        ]
+      }
+    }
+  },
+  "supabase": {
+    "tables": {
+      "warmup_actions": {
+        "columns": [
+          {"name": "id",            "type": "uuid",        "nullable": false, "primary_key": true},
+          {"name": "timestamp",     "type": "timestamptz", "nullable": false},
+          {"name": "account_slug",  "type": "text",        "nullable": false},
+          {"name": "session_id",    "type": "text",        "nullable": false},
+          {"name": "warmup_day",    "type": "integer",     "nullable": true},
+          {"name": "warmup_week",   "type": "integer",     "nullable": true},
+          {"name": "action_type",   "type": "text",        "nullable": false},
+          {"name": "metadata",      "type": "jsonb",       "nullable": false}
+        ],
+        "indexes": [
+          "idx_warmup_actions_account_time",
+          "idx_warmup_actions_time",
+          "idx_warmup_actions_session",
+          "idx_warmup_actions_type_time",
+          "idx_warmup_actions_metadata"
+        ]
+      }
+    }
+  }
+}

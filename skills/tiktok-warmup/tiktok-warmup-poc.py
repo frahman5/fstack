@@ -15,11 +15,19 @@ Usage:
 import os
 import sys
 import json
+import uuid
 import random
 import time
 import argparse
 import requests
 from playwright.sync_api import sync_playwright, Page
+
+# Local: Supabase action logger (lives next to this script in the skill dir)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from supabase_logger import SupabaseLogger
+except Exception:
+    SupabaseLogger = None  # logging disabled if module fails to import
 
 # Force unbuffered output
 sys.stdout.reconfigure(line_buffering=True)
@@ -287,6 +295,7 @@ def generate_session_personality(warmup_week: int = 1, duration_override: float 
         "max_searches": max_searches,
         "watch_style": watch_style,
         "start_page": start_page,
+        "warmup_week": warmup_week,
     }
 
 
@@ -324,12 +333,13 @@ def human_pause(min_s=1.0, max_s=3.0):
 # ---------------------------------------------------------------------------
 
 class TikTokSession:
-    def __init__(self, page: Page, personality: dict, search_terms: list, profile_name: str = "", op_item: str = None):
+    def __init__(self, page: Page, personality: dict, search_terms: list, profile_name: str = "", op_item: str = None, logger=None):
         self.page = page
         self.p = personality  # session personality
         self.search_terms = search_terms
         self.profile_name = profile_name  # used for re-login mid-session
         self.op_item = op_item             # 1Password item name for credential lookup
+        self.logger = logger               # SupabaseLogger or None
         self.likes_given = 0
         self.follows_given = 0
         self.comments_left = 0
@@ -341,6 +351,14 @@ class TikTokSession:
         self.ended_early = False
         self.end_reason = ""
         self.login_modals_seen = 0
+
+    def _emit(self, action_type, **metadata):
+        """Send an action to Supabase. Silently noop if logger is None."""
+        if self.logger:
+            try:
+                self.logger.log(action_type, **metadata)
+            except Exception:
+                pass
 
     def _check_niche_video(self) -> bool:
         """Quick DOM check: does the current video have niche-relevant hashtags?"""
@@ -417,6 +435,7 @@ class TikTokSession:
         try:
             self.page.keyboard.press("l")
             self.likes_given += 1
+            self._emit("like", location=self.current_location, url=self.page.url)
             human_pause(0.5, 1.5)
         except Exception:
             pass
@@ -425,14 +444,43 @@ class TikTokSession:
         if self.follows_given >= self.p["max_follows"]:
             return
         print("    + Following creator")
+        # Multiple selectors — TikTok ships UI changes frequently and we need
+        # multilingual coverage (Spanish/Italian/French/Portuguese accounts).
+        selectors = [
+            '[data-e2e="feed-follow"]',
+            '[data-e2e="browse-follow"]',
+            '[data-e2e="follow-button"]',
+            'button[aria-label*="Follow" i]',
+            'button[aria-label*="Seguir" i]',
+            'button[aria-label*="Seguire" i]',
+            'button[aria-label*="Suivre" i]',
+            'button:has-text("Follow"):not(:has-text("Following"))',
+            'button:has-text("Seguir"):not(:has-text("Siguiendo"))',
+            'button:has-text("Segui"):not(:has-text("Seguito"))',
+            'button:has-text("Suivre"):not(:has-text("Suivi"))',
+        ]
         try:
-            follow_btn = self.page.query_selector('[data-e2e="browse-follow"], button:has-text("Follow")')
+            follow_btn = None
+            matched_selector = None
+            for sel in selectors:
+                try:
+                    follow_btn = self.page.query_selector(sel)
+                    if follow_btn:
+                        matched_selector = sel
+                        break
+                except Exception:
+                    continue
             if follow_btn:
                 follow_btn.click()
                 self.follows_given += 1
+                self._emit("follow", location=self.current_location, url=self.page.url, selector=matched_selector)
                 human_pause(1, 3)
-        except Exception:
-            pass
+            else:
+                # Important telemetry: the script tried to follow but couldn't find the button.
+                # The audit agent uses these to know when the selector list needs updating.
+                self._emit("follow_skipped", reason="no_button_found", location=self.current_location, url=self.page.url)
+        except Exception as e:
+            self._emit("follow_skipped", reason=f"exception:{type(e).__name__}", location=self.current_location)
 
     # --- Navigation ---
 
@@ -536,32 +584,61 @@ class TikTokSession:
             "too good jaja", "literally me", "noo jajaja",
         ]
         comment = random.choice(comments)
+        comment_btn_selectors = [
+            '[data-e2e="comment-icon"]',
+            '[data-e2e="browse-comment"]',
+            '[data-e2e="feed-comment"]',
+            'button[aria-label*="Comment" i]',
+            'button[aria-label*="Comentario" i]',
+            'button[aria-label*="Commento" i]',
+            'button[aria-label*="Commentaire" i]',
+        ]
+        input_selectors = [
+            '[data-e2e="comment-input"]',
+            'div[contenteditable="true"][data-tt*="comment" i]',
+            'div[contenteditable="true"]',
+        ]
         try:
-            # Click comment icon to open panel
-            comment_btn = self.page.query_selector('[data-e2e="comment-icon"], [data-e2e="browse-comment"]')
-            if comment_btn:
-                comment_btn.click()
-                human_pause(1, 3)
-                # Find and click the comment input
-                comment_input = self.page.query_selector('[data-e2e="comment-input"], [contenteditable="true"]')
-                if comment_input:
-                    comment_input.click()
-                    human_pause(0.5, 1)
-                    # Type with human speed
-                    for char in comment:
-                        self.page.keyboard.type(char, delay=random.randint(50, 150))
-                        if random.random() < 0.03:
-                            time.sleep(random.uniform(0.3, 1))
-                    human_pause(0.5, 1.5)
-                    # Submit
-                    self.page.keyboard.press("Enter")
-                    self.comments_left += 1
-                    human_pause(1, 3)
-                # Close comment panel
+            comment_btn = None
+            for sel in comment_btn_selectors:
+                try:
+                    comment_btn = self.page.query_selector(sel)
+                    if comment_btn:
+                        break
+                except Exception:
+                    continue
+            if not comment_btn:
+                self._emit("comment_skipped", reason="no_comment_button", location=self.current_location, url=self.page.url)
+                return
+            comment_btn.click()
+            human_pause(1, 3)
+            comment_input = None
+            for sel in input_selectors:
+                try:
+                    comment_input = self.page.query_selector(sel)
+                    if comment_input:
+                        break
+                except Exception:
+                    continue
+            if not comment_input:
+                self._emit("comment_skipped", reason="no_input_found", location=self.current_location, url=self.page.url)
                 self.page.keyboard.press("Escape")
-                human_pause(0.5, 1)
-        except Exception:
-            pass
+                return
+            comment_input.click()
+            human_pause(0.5, 1)
+            for char in comment:
+                self.page.keyboard.type(char, delay=random.randint(50, 150))
+                if random.random() < 0.03:
+                    time.sleep(random.uniform(0.3, 1))
+            human_pause(0.5, 1.5)
+            self.page.keyboard.press("Enter")
+            self.comments_left += 1
+            self._emit("comment", text=comment, location=self.current_location, url=self.page.url)
+            human_pause(1, 3)
+            self.page.keyboard.press("Escape")
+            human_pause(0.5, 1)
+        except Exception as e:
+            self._emit("comment_skipped", reason=f"exception:{type(e).__name__}", location=self.current_location)
 
     def scroll_fyp(self):
         if self.current_location != "fyp":
@@ -577,18 +654,23 @@ class TikTokSession:
             print(f"    Watching video {i+1}/{num_videos} for {watch_time:.0f}s")
             time.sleep(watch_time)
             self.videos_watched += 1
-            if self._check_niche_video():
+            niche_match = self._check_niche_video()
+            if niche_match:
                 self.niche_videos += 1
+            self._emit("video_watch", location=self.current_location, watch_time_s=round(watch_time, 1), niche_match=niche_match, url=self.page.url)
 
             # --- Micro-interactions during/after watching ---
-            # Like (~15%)
-            if random.random() < 0.15:
+            # Probabilities scale with warmup week — newer accounts engage less.
+            # Wk1: very light. Wk2+: more active to give TikTok stronger signals.
+            wk = self.p.get("warmup_week", 2)
+            like_p   = 0.15 if wk <= 1 else 0.20
+            follow_p = 0.03 if wk <= 1 else 0.07   # was 0.03 — only 1 follow in 10 days observed
+            comment_p = 0.0 if wk <= 1 else 0.08   # was 0.04 — 0 comments in 10 days observed
+            if random.random() < like_p:
                 self._like_current_video()
-            # Follow (~3%)
-            if random.random() < 0.03:
+            if random.random() < follow_p:
                 self._follow_current_creator()
-            # Comment (~4%, respects weekly limits)
-            if random.random() < 0.04:
+            if random.random() < comment_p:
                 self._comment_on_video()
             # Bookmark (~5%)
             if random.random() < 0.05:
@@ -752,6 +834,7 @@ class TikTokSession:
         self.current_location = "search_results"
         human_pause(2, 4)
         self.searches_done += 1
+        self._emit("search", query=term)
 
         for i in range(random.randint(3, 8)):
             if self.session_over:
@@ -760,6 +843,7 @@ class TikTokSession:
             print(f"    Watching search result {i+1} for {watch_time:.0f}s")
             time.sleep(watch_time)
             self.videos_watched += 1
+            self._emit("video_watch", location="search_results", watch_time_s=round(watch_time, 1), niche_match=True, url=self.page.url)
             self.niche_videos += 1  # search results are on-niche by definition
             if random.random() < 0.2:
                 self._like_current_video()
@@ -980,10 +1064,20 @@ class TikTokSession:
 # Session orchestrator
 # ---------------------------------------------------------------------------
 
-def run_session(page: Page, personality: dict, search_terms: list, profile_name: str = "", op_item: str = None):
+def run_session(page: Page, personality: dict, search_terms: list, profile_name: str = "", op_item: str = None, logger=None):
     """Run a humanized TikTok session driven by the generated personality."""
-    session = TikTokSession(page, personality, search_terms, profile_name=profile_name, op_item=op_item)
+    session = TikTokSession(page, personality, search_terms, profile_name=profile_name, op_item=op_item, logger=logger)
     p = personality
+
+    # Emit session start
+    session._emit("session_start",
+                  duration_target_min=p.get("duration_min"),
+                  start_page=p.get("start_page"),
+                  max_likes=p.get("max_likes"),
+                  max_follows=p.get("max_follows"),
+                  max_comments=p.get("max_comments"),
+                  max_searches=p.get("max_searches"),
+                  niche_terms_count=len(search_terms))
 
     print(f"\n{'='*60}")
     print(f"SESSION PERSONALITY")
@@ -1116,6 +1210,14 @@ def run_session(page: Page, personality: dict, search_terms: list, profile_name:
     print(f"  Activities: {results['activities']}")
     print(f"  Final screenshot: /tmp/tiktok_final.png")
     print(f"{'='*60}")
+
+    # Emit session end + flush remaining buffered actions
+    session._emit("session_end", **results)
+    if logger:
+        try:
+            logger.flush()
+        except Exception:
+            pass
 
     return results
 
@@ -1686,6 +1788,13 @@ def main():
     parser.add_argument("--daily-niche-pct", type=float, default=None,
                         help="Running daily niche %% (0.0–1.0) from prior sessions today. "
                              "Below 0.70 → NICHE_PUSH, above 0.90 → NOISE_INJECT, else BALANCED.")
+    parser.add_argument("--account-slug", type=str, default="",
+                        help="Account slug for action logging (e.g. 'tiktok,flooently_spanish'). "
+                             "If omitted, action logging to Supabase is disabled.")
+    parser.add_argument("--session-id", type=str, default="",
+                        help="Stable session UUID (lets the audit agent group rows). "
+                             "If omitted, one is generated per run.")
+    parser.add_argument("--warmup-day", type=int, default=None, help="Day N since warmup start (for action logs).")
     args = parser.parse_args()
 
     if not MLX_TOKEN:
@@ -1747,7 +1856,20 @@ def main():
             page.set_viewport_size({"width": 1280, "height": 800})
 
             ensure_login(page, name, op_item=profile_info.get("op_item"))
-            results = run_session(page, personality, search_terms, profile_name=name, op_item=profile_info.get("op_item"))
+
+            # Initialize action logger if account slug was provided
+            logger = None
+            if args.account_slug and SupabaseLogger is not None:
+                session_id = args.session_id or str(uuid.uuid4())
+                logger = SupabaseLogger(
+                    account_slug=args.account_slug,
+                    session_id=session_id,
+                    warmup_day=args.warmup_day,
+                    warmup_week=args.week,
+                )
+                print(f"  📡 Supabase action logging enabled — session_id={session_id}")
+
+            results = run_session(page, personality, search_terms, profile_name=name, op_item=profile_info.get("op_item"), logger=logger)
             print(f"\nResults JSON: {json.dumps(results, indent=2)}")
 
         except Exception as e:
