@@ -66,6 +66,9 @@ TABLES_OF_INTEREST = {
 
 
 def detect_brand():
+    # Prefer explicit env var over cwd heuristic (supports repos with generic names)
+    if os.environ.get("AIRTABLE_BRAND"):
+        return os.environ["AIRTABLE_BRAND"]
     cwd_lower = os.getcwd().lower()
     if "blaze-platform" in cwd_lower:
         return "Blaze"
