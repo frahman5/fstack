@@ -390,3 +390,20 @@ Service accounts **require `--vault`** (op refuses without it) but must NOT have
 2. Added redirect detection in `ensure_login`: after navigating to the login URL, if `"/login"` is no longer in `page.url`, TikTok redirected to the feed because the user is already logged in — return immediately.
 
 **When you see this again:** Check `/tmp/tiktok_login_start.png`. If it shows the For You feed (not a login form), it's this issue. The fix is already in the script — just re-run.
+
+**Recurrence (2026-04-30):** This bug recurred despite the 2026-04-18 fix. Seen on Giulia Romano session (error: "Login false-negative (bug: _is_logged_in navigated to /foryou then re-navigated)"). If the script navigates to `/foryou` to check login state and then immediately navigates again, the second navigation may lose the logged-in context. Verify that `is_logged_in(navigate=True)` does NOT call `goto` more than once per invocation.
+
+---
+
+## /tmp Screenshot PermissionError — Root-Owned Files From Prior Run (2026-04-30)
+
+**Symptom:** All accounts fail at session start with `screenshot_permission_error` or `PermissionError: [Errno 13] Permission denied: '/tmp/tiktok_initial.png'`. Typically affects all accounts simultaneously at the start of a warmup batch (seen 6+ times across 4 accounts on 2026-04-30).
+
+**Root cause:** A previous harness run executed as root (or via sudo) and created `/tmp/tiktok_*.png` files owned by root. When the next run executes as a non-root user, `page.screenshot(path='/tmp/tiktok_initial.png')` fails with EPERM.
+
+**Recovery:** Before the next warmup batch, clear root-owned temp files:
+```bash
+sudo rm -f /tmp/tiktok_*.png /tmp/tiktok_login*.png /tmp/tiktok_session*.png
+```
+
+**Prevention:** Always run the warmup harness as the same non-root user. Never invoke with `sudo`. If the Claude Code harness causes root execution (e.g. via `bypassPermissions` + systemd), add a pre-flight check in the script: if `/tmp/tiktok_initial.png` exists and is not writable, delete it before calling `page.screenshot`.
