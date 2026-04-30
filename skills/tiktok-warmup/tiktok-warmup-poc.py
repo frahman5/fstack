@@ -1466,6 +1466,43 @@ def _fetch_tiktok_otp(timeout_secs: int = 60) -> str:
     raise Exception("TikTok OTP email did not arrive within 60s")
 
 
+def _stop_and_upload_recording(profile_name: str, caption_suffix: str = "") -> None:
+    """Stop the ffmpeg recording, wait for finalization, upload to Telegram if < 45 MB."""
+    rec_path = os.environ.get("_WARMUP_RECORDING_PATH", "")
+    rec_pid_str = os.environ.get("_WARMUP_RECORDING_PID", "")
+    if not rec_path:
+        return
+    # Terminate ffmpeg so it writes the moov atom and finalizes the mp4
+    if rec_pid_str:
+        try:
+            import signal as _sig
+            os.kill(int(rec_pid_str), _sig.SIGTERM)
+            time.sleep(4)  # give ffmpeg time to flush + write moov
+        except Exception:
+            pass
+        os.environ["_WARMUP_RECORDING_PID"] = ""  # mark stopped
+    if not os.path.exists(rec_path):
+        return
+    size_mb = os.path.getsize(rec_path) / 1_000_000
+    print(f"  📹 Recording finalized: {rec_path} ({size_mb:.1f} MB)")
+    if size_mb > 45:
+        print(f"  Recording too large to upload ({size_mb:.1f} MB > 45 MB) — path in alert only")
+        return
+    caption = f"🎬 Session recording — {profile_name}" + (f"\n{caption_suffix}" if caption_suffix else "")
+    try:
+        subprocess.run([
+            "curl", "-s", "-X", "POST",
+            "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendVideo",
+            "-F", "chat_id=5043064976",
+            "-F", f"caption={caption}",
+            "-F", f"video=@{rec_path}",
+            "-F", "supports_streaming=true",
+        ], timeout=120)
+        print("  📹 Recording uploaded to Telegram")
+    except Exception as _e:
+        print(f"  Recording upload failed: {_e}")
+
+
 def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
     """
     Verify TikTok is logged in. If not, attempt email login via 1Password credentials
@@ -1589,6 +1626,7 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
                 ], timeout=10)
             except Exception:
                 pass
+        _stop_and_upload_recording(profile_name, "Slider puzzle detected — session stopped")
         raise Exception("CAPTCHA — slider puzzle detected, session stopped immediately")
 
     # Submit
@@ -1668,6 +1706,7 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
             except Exception:
                 pass
         page.screenshot(path="/tmp/tiktok_login_final.png")
+        _stop_and_upload_recording(profile_name, "Auto-login failed — see screenshots")
         raise Exception(
             "Auto-login failed (captcha, wrong credentials, or unexpected flow). "
             "Screenshots: /tmp/tiktok_login_*.png"
@@ -1923,8 +1962,9 @@ def main():
     except Exception as _rec_err:
         print(f"  Recording start failed (non-fatal): {_rec_err}")
 
-    # Expose recording path to login helpers so they can attach it to alerts
+    # Expose recording path + PID to login helpers for stop + upload on failure
     os.environ["_WARMUP_RECORDING_PATH"] = _rec_path or ""
+    os.environ["_WARMUP_RECORDING_PID"] = str(_rec_proc.pid) if _rec_proc else ""
 
     with sync_playwright() as pw:
         try:
