@@ -1671,7 +1671,38 @@ def _is_proxy_error(resp_text: str, error_code: str) -> bool:
     )
 
 
+
+def release_cloud_lock(folder_id: str, profile_id: str):
+    """Release Multilogin cloud lock before starting a profile.
+    Treats 200 and 404 as success — 404 means no lock existed.
+    Best-effort: logs failures but does not raise.
+    """
+    workspace_id = os.environ.get("MLX_WORKSPACE_ID", "")
+    if not workspace_id:
+        print("  release_cloud_lock: MLX_WORKSPACE_ID not set, skipping lock release")
+        return
+    headers = {
+        "Authorization": f"Bearer {MLX_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {"profile_id": profile_id, "workspace_id": workspace_id, "folder_id": folder_id}
+    try:
+        resp = requests.delete(
+            "https://api.multilogin.com/bpds/profile/lock",
+            headers=headers,
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code in (200, 404):
+            print(f"  Cloud lock released (status={resp.status_code})")
+        else:
+            print(f"  Cloud lock release returned {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        print(f"  Cloud lock release failed (non-fatal): {e}")
+
+
 def start_profile(folder_id: str, profile_id: str):
+    release_cloud_lock(folder_id, profile_id)
     headers = {"Authorization": f"Bearer {MLX_TOKEN}", "Accept": "application/json"}
     url = f"https://launcher.mlx.yt:45001/api/v2/profile/f/{folder_id}/p/{profile_id}/start?automation_type=playwright&headless_mode=false"
     print(f"Starting Multilogin profile {profile_id}...")
