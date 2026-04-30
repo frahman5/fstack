@@ -359,13 +359,13 @@ Format: `Xmin@HH:MM<MachineZone>/HH:MM<AccountZone>` — e.g. `7min@23:13EDT/21:
 
 Compute start times by taking the current wall-clock time, adding sequential session durations plus the 2–5 min inter-session gaps. If `Timezone` is missing for an account (should be auto-healed above), fall back to UTC and label it `UTC`.
 
-**Before scheduling anything: ask Faiyam "looks good? (yes to proceed)"** and wait for confirmation.
+Print the plan and proceed immediately — no confirmation needed.
 
 ---
 
 ## STEP 5 — Execute sessions — single-thread monitoring loop
 
-Once Faiyam confirms the plan, run all sessions directly in this agent thread. **No RemoteTriggers. No CronCreate. You stay in the loop, watch what happens, and fix problems.**
+Run all sessions directly in this agent thread. **No RemoteTriggers. No CronCreate. You stay in the loop, watch what happens, and fix problems.**
 
 **Launch pattern — concurrent across accounts, sequential within:**
 
