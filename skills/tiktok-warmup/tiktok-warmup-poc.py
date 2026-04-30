@@ -1569,6 +1569,19 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
         time.sleep(random.uniform(4, 7))
         page.screenshot(path="/tmp/tiktok_login_start.png")
 
+    # Dismiss cookie consent banner before touching the form — reduces TikTok suspicion score.
+    # TikTok's anti-bot system flags sessions that submit credentials without cookie interaction.
+    for _cb_text in ["Decline optional cookies", "Allow all"]:
+        try:
+            _cb = page.query_selector(f'button:has-text("{_cb_text}")')
+            if _cb and _cb.is_visible():
+                _cb.click()
+                time.sleep(random.uniform(0.8, 1.5))
+                print("  ✓ Cookie consent dismissed")
+                break
+        except Exception:
+            pass
+
     # Fill email — try multiple selectors in case TikTok changed the DOM
     email_sel = 'input[name="username"]'
     alt_sel = 'input[type="text"][placeholder]'
@@ -1636,6 +1649,65 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
         page.keyboard.press("Enter")
     time.sleep(random.uniform(4, 6))
     page.screenshot(path="/tmp/tiktok_login_after_submit.png")
+
+    # Detect post-submit slider CAPTCHA — TikTok often shows this for first logins from new IPs.
+    # Must check BEFORE _is_logged_in so we send a specific CAPTCHA alert, not a generic failure.
+    try:
+        _submit_body = page.inner_text("body", timeout=3000).lower()
+        _captcha_phrases = ["drag the slider", "drag to complete", "fit the puzzle",
+                            "slide to verify", "rotate the image", "drag to unlock"]
+        if any(p in _submit_body for p in _captcha_phrases):
+            page.screenshot(path="/tmp/warmup_captcha.png")
+            try:
+                subprocess.run(["convert", "/tmp/warmup_captcha.png", "-resize", "1800x1800>",
+                                 "/tmp/warmup_captcha.png"], timeout=5)
+            except Exception:
+                pass
+            _rec3 = os.environ.get("_WARMUP_RECORDING_PATH", "")
+            _slider_msg = (
+                f"🧩 CAPTCHA on login — {profile_name}
+
+"
+                "TikTok showed a slider puzzle after submitting credentials.
+"
+                "This is common for first login from a new server IP.
+
+"
+                "Once solved: session cookies save to Multilogin — future runs "
+                "won't need to re-login until TikTok expires the session.
+
+"
+                "noVNC: http://100.96.234.61:6080/vnc.html
+
+"
+                + (f"Recording: {_rec3}
+
+" if _rec3 else "")
+                + "Reply once solved — server will retry immediately."
+            )
+            try:
+                subprocess.run([
+                    "curl", "-s", "-X", "POST",
+                    "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendPhoto",
+                    "-F", "chat_id=5043064976",
+                    "-F", f"caption={_slider_msg}",
+                    "-F", "photo=@/tmp/warmup_captcha.png",
+                ], timeout=15)
+            except Exception:
+                try:
+                    subprocess.run([
+                        "curl", "-s", "-X", "POST",
+                        "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendMessage",
+                        "-d", "chat_id=5043064976",
+                        "--data-urlencode", f"text={_slider_msg}",
+                    ], timeout=10)
+                except Exception:
+                    pass
+            _stop_and_upload_recording(profile_name, "Slider CAPTCHA on login page")
+            raise Exception("CAPTCHA — TikTok slider puzzle on login page. Session stopped.")
+    except Exception as _cap_check_err:
+        if "CAPTCHA" in str(_cap_check_err):
+            raise  # re-raise our intentional escalation
 
     # Detect 24h lockout — "Maximum number of attempts reached. Try again later."
     # If we see this, do NOT retry: every retry extends the lockout window.
