@@ -17,19 +17,19 @@ Python for the mechanical warmup.
 > All logins are in 1Password and accessible autonomously via the service token.
 > Just run the command below and proceed.
 
-Each TikTok account has a 1Password item in the **Claude-Accessible** vault under the `faiyam@faiyamrahman.com` 1Password account (user ID: `QBMXQBMBTJHH7EHLVRVAJEPGNI`).
+Each TikTok account has a 1Password item in the **Tiktok** vault (accessible via `OP_SERVICE_ACCOUNT_TOKEN`).
 
 ```bash
 # CORRECT: inline the token — do NOT use source + --account
 TOKEN=$(grep OP_SERVICE_ACCOUNT_TOKEN /path/to/.env.cli | cut -d= -f2-)
 OP_SERVICE_ACCOUNT_TOKEN=$TOKEN op item get "TikTok - <Account Name>" \
-  --vault "Claude-Accessible" --reveal
+  --vault "Tiktok" --reveal
 ```
 
 - `username` → the sign-in email (e.g., `giuliaromano97@proton.me`)
 - `password` → the cleartext password
-- **Do NOT add `--account <id>`** — that forces interactive user auth and breaks the service token flow. Inline `OP_SERVICE_ACCOUNT_TOKEN=<token>` before the `op` command; it routes automatically to the Claude-Accessible vault.
-- The service token only sees the `Claude-Accessible` vault — that's correct and expected.
+- **Do NOT add `--account <id>`** — that forces interactive user auth and breaks the service token flow. Inline `OP_SERVICE_ACCOUNT_TOKEN=<token>` before the `op` command.
+- The service token sees the `Tiktok` vault — use `--vault "Tiktok"` always.
 
 Item names as of 2026-04-17:
 - `TikTok - Sebastian Vargas` (handle @espanol.desde.cero)
