@@ -1364,11 +1364,15 @@ def _get_credentials_from_1password(op_item: str):
     # OP_SERVICE_ACCOUNT_TOKEN is loaded from .env.cli at script startup.
     # The op CLI picks it up from the environment automatically — no --account
     # flag, no biometric prompt, no interactive sign-in required.
+    import tempfile as _tf
+    xdg = os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/op-xdg-{os.getuid()}"
+    os.makedirs(xdg, mode=0o700, exist_ok=True)
+    op_env = {**os.environ, "XDG_RUNTIME_DIR": xdg}
     result = subprocess.run(
-        ["op", "item", "get", op_item, "--vault", "TikTok",
+        ["op", "item", "get", op_item, "--vault", "Tiktok",
          "--fields", "username,password", "--reveal"],
         capture_output=True, text=True, timeout=20,
-        env=os.environ, stdin=subprocess.DEVNULL,
+        env=op_env, stdin=subprocess.DEVNULL,
     )
     if result.returncode != 0:
         # Never prompt for permissions. If the service account token doesn't work,
