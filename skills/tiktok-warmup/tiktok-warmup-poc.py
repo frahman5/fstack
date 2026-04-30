@@ -1540,33 +1540,40 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
     # Wait for login button to become enabled (CAPTCHA may be blocking it)
     login_btn = page.query_selector('button[data-e2e="login-button"]')
     if login_btn and not login_btn.is_enabled():
-        print(
-            "  ⏸ Login button is disabled — CAPTCHA is blocking. "
-            "Please solve the puzzle in the Multilogin browser window.\n"
-            "  Waiting up to 25 minutes..."
+        print("  ⏸ Login button disabled — CAPTCHA blocking. Escalating and stopping session.")
+        page.screenshot(path="/tmp/warmup_captcha.png")
+        try:
+            import subprocess as _sp2
+            _sp2.run(["convert", "/tmp/warmup_captcha.png", "-resize", "1800x1800>", "/tmp/warmup_captcha.png"], timeout=5)
+        except Exception:
+            pass
+        _captcha_msg = (
+            f"🧩 CAPTCHA — {profile_name}\n\n"
+            "Login button disabled (slider puzzle blocking login).\n"
+            "Session is stopping — profile lock will be released.\n\n"
+            "noVNC: http://100.96.234.61:6080/vnc.html\n\n"
+            "Reply to this message once fixed — server will retry immediately."
         )
         try:
             import subprocess as _sp2
             _sp2.run([
                 "curl", "-s", "-X", "POST",
-                "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendMessage",
-                "-d", f"chat_id=5043064976&text=⏸ CAPTCHA on {profile_name} — login button blocked. Multilogin browser is open. Solve the slider puzzle to unblock login. Waiting 10 min.",
-            ], timeout=10)
+                "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendPhoto",
+                "-F", "chat_id=5043064976",
+                "-F", f"caption={_captcha_msg}",
+                "-F", "photo=@/tmp/warmup_captcha.png",
+            ], timeout=15)
         except Exception:
-            pass
-        _btn_deadline = time.time() + 1500
-        while time.time() < _btn_deadline:
-            time.sleep(5)
-            login_btn = page.query_selector('button[data-e2e="login-button"]')
-            if login_btn and login_btn.is_enabled():
-                print("  ✓ Login button enabled — CAPTCHA appears solved. Proceeding...")
-                break
-        else:
-            page.screenshot(path="/tmp/tiktok_login_final.png")
-            raise Exception(
-                "CAPTCHA_TIMEOUT: Login button stayed disabled for 10 minutes. "
-                "Screenshots: /tmp/tiktok_login_*.png"
-            )
+            try:
+                _sp2.run([
+                    "curl", "-s", "-X", "POST",
+                    "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendMessage",
+                    "-d", "chat_id=5043064976",
+                    "--data-urlencode", f"text={_captcha_msg}",
+                ], timeout=10)
+            except Exception:
+                pass
+        raise Exception("CAPTCHA — slider puzzle detected, session stopped immediately")
 
     # Submit
     if login_btn:
@@ -1606,49 +1613,46 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
 
     page.screenshot(path="/tmp/tiktok_login_final.png")
 
-    # Verify — if not logged in, wait up to 3 min for manual CAPTCHA solve or re-login
+    # Verify — if not logged in, escalate and stop immediately
     if not _is_logged_in(page):
-        print(
-            "  ⏸ Auto-login did not succeed. Browser window is open.\n"
-            "  Please complete login manually (solve CAPTCHA/puzzle if present).\n"
-            "  Waiting up to 25 minutes..."
+        print("  ⏸ Auto-login did not succeed. Escalating and stopping session.")
+        page.screenshot(path="/tmp/warmup_captcha.png")
+        try:
+            import subprocess as _sp
+            _sp.run(["convert", "/tmp/warmup_captcha.png", "-resize", "1800x1800>", "/tmp/warmup_captcha.png"], timeout=5)
+        except Exception:
+            pass
+        _login_fail_msg = (
+            f"🧩 Login failed — {profile_name}\n\n"
+            "Auto-login did not result in a logged-in session.\n"
+            "Could be: CAPTCHA, wrong credentials, or unexpected TikTok flow.\n"
+            "Screenshot shows current screen state.\n\n"
+            "noVNC: http://100.96.234.61:6080/vnc.html\n\n"
+            "Reply to this message once fixed — server will retry immediately."
         )
-        # Telegram alert so the user knows to act
         try:
             import subprocess as _sp
             _sp.run([
                 "curl", "-s", "-X", "POST",
-                "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendMessage",
-                "-d", f"chat_id=5043064976&text=⏸ CAPTCHA on {profile_name} — Multilogin browser is open. Please solve the slider puzzle and log in. Script waiting up to 10 min.",
-            ], timeout=10)
+                "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendPhoto",
+                "-F", "chat_id=5043064976",
+                "-F", f"caption={_login_fail_msg}",
+                "-F", "photo=@/tmp/warmup_captcha.png",
+            ], timeout=15)
         except Exception:
-            pass
-        _manual_deadline = time.time() + 1500
-        _onboard_clicked = False
-        while time.time() < _manual_deadline:
-            time.sleep(5)
-            # Handle "What would you like to watch on TikTok?" onboarding modal — click Log in ONCE.
-            # Only when NOT already on the login page (avoids matching login form's submit button).
-            if not _onboard_clicked and "/login" not in page.url:
-                try:
-                    _modal_login = page.query_selector(
-                        'div[role="dialog"] button:has-text("Log in"), '
-                        'div[class*="modal" i] button:has-text("Log in")'
-                    )
-                    if _modal_login and _modal_login.is_visible():
-                        print("  🔘 Onboarding modal detected — clicking Log in...")
-                        _modal_login.click(timeout=3000)
-                        _onboard_clicked = True
-                        time.sleep(random.uniform(2, 4))
-                except Exception:
-                    pass
-            if _is_logged_in(page, navigate=False):
-                print("  ✓ Manual login detected — continuing.")
-                return
+            try:
+                _sp.run([
+                    "curl", "-s", "-X", "POST",
+                    "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5KpGca2_SBF598/sendMessage",
+                    "-d", "chat_id=5043064976",
+                    "--data-urlencode", f"text={_login_fail_msg}",
+                ], timeout=10)
+            except Exception:
+                pass
         page.screenshot(path="/tmp/tiktok_login_final.png")
         raise Exception(
             "Auto-login failed (captcha, wrong credentials, or unexpected flow). "
-            "Manual re-login required. Screenshots: /tmp/tiktok_login_*.png"
+            "Screenshots: /tmp/tiktok_login_*.png"
         )
     print("✓ Login successful.")
 
