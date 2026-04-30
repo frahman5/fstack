@@ -1232,8 +1232,8 @@ def _is_logged_in(page: Page, navigate: bool = True) -> bool:
     """Return True if TikTok shows CLEAR logged-in indicators.
 
     Logged-out users can still see FYP content, so presence of videos alone is
-    NOT a logged-in signal. We require a strict positive: profile avatar, upload
-    icon, or an account-nav element that only exists for authenticated users.
+    NOT a logged-in signal. We require either a strict positive selector match OR
+    the absence of all login CTAs (TikTok always shows a Log in button when logged out).
 
     If `navigate` is False, checks current page without navigating (for mid-session
     checks after returning from external sites).
@@ -1241,7 +1241,7 @@ def _is_logged_in(page: Page, navigate: bool = True) -> bool:
     try:
         if navigate:
             page.goto("https://www.tiktok.com/", wait_until="domcontentloaded", timeout=20000)
-            time.sleep(random.uniform(3, 5))
+            time.sleep(random.uniform(4, 6))
         # Hard negative: redirected to login page
         if "/login" in page.url:
             return False
@@ -1252,19 +1252,33 @@ def _is_logged_in(page: Page, navigate: bool = True) -> bool:
         )
         if login_btn:
             return False
-        # Hard positive: must see at least one authenticated-only indicator
+        # Strict positive selectors — data-e2e attrs + href-based (covers DOM changes)
         strict_positive_selectors = [
-            '[data-e2e="nav-profile"]',           # profile link in sidebar
-            '[data-e2e="upload-icon"]',           # upload button (logged-in only)
-            '[data-e2e="profile-icon"]',          # avatar
+            '[data-e2e="nav-profile"]',
+            '[data-e2e="upload-icon"]',
+            '[data-e2e="profile-icon"]',
             'a[href^="/@"][data-e2e="nav-profile"]',
-            'a[href="/upload"]',                  # upload link (logged-in only)
-            'a[href^="/@"]',                      # any profile link (logged-in only)
+            'a[href="/upload"]',
+            'a[href^="/@"]',
+            'a[href="/messages"]',    # Messages — only rendered for logged-in users
+            'a[href="/activity"]',    # Activity — only rendered for logged-in users
+            'a[href="/following"]',   # Following — only rendered for logged-in users
         ]
         for sel in strict_positive_selectors:
             if page.query_selector(sel):
                 return True
-        # No strict positive found → assume logged out.
+        # JS fallback: scan all <a> hrefs for a user profile link (/@username)
+        # TikTok renders these for the sidebar Profile link and Following accounts.
+        try:
+            hrefs = page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href') || '')")
+            if any(h.startswith("/@") or ("/@" in h and h.startswith("/")) for h in hrefs):
+                return True
+        except Exception:
+            pass
+        # Final fallback: if we're at tiktok.com root with no login button visible,
+        # TikTok would always show a Log-in CTA when logged out — so absence = logged in.
+        if page.url.rstrip("/") in ("https://www.tiktok.com", "https://www.tiktok.com/foryou"):
+            return True
         return False
     except Exception as e:
         print(f"  Login check error: {e}")
@@ -1547,12 +1561,14 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
             _sp2.run(["convert", "/tmp/warmup_captcha.png", "-resize", "1800x1800>", "/tmp/warmup_captcha.png"], timeout=5)
         except Exception:
             pass
+        _rec = os.environ.get("_WARMUP_RECORDING_PATH", "")
         _captcha_msg = (
             f"🧩 CAPTCHA — {profile_name}\n\n"
             "Login button disabled (slider puzzle blocking login).\n"
             "Session is stopping — profile lock will be released.\n\n"
             "noVNC: http://100.96.234.61:6080/vnc.html\n\n"
-            "Reply to this message once fixed — server will retry immediately."
+            + (f"Recording: {_rec}\n\n" if _rec else "")
+            + "Reply to this message once fixed — server will retry immediately."
         )
         try:
             import subprocess as _sp2
@@ -1622,13 +1638,15 @@ def ensure_login(page: Page, profile_name: str, op_item: str = None) -> None:
             _sp.run(["convert", "/tmp/warmup_captcha.png", "-resize", "1800x1800>", "/tmp/warmup_captcha.png"], timeout=5)
         except Exception:
             pass
+        _rec2 = os.environ.get("_WARMUP_RECORDING_PATH", "")
         _login_fail_msg = (
             f"🧩 Login failed — {profile_name}\n\n"
             "Auto-login did not result in a logged-in session.\n"
             "Could be: CAPTCHA, wrong credentials, or unexpected TikTok flow.\n"
             "Screenshot shows current screen state.\n\n"
             "noVNC: http://100.96.234.61:6080/vnc.html\n\n"
-            "Reply to this message once fixed — server will retry immediately."
+            + (f"Recording: {_rec2}\n\n" if _rec2 else "")
+            + "Reply to this message once fixed — server will retry immediately."
         )
         try:
             import subprocess as _sp
@@ -1884,6 +1902,30 @@ def main():
     port = start_profile(profile_info["folder"], profile_info["id"])
     human_pause(3, 5)
 
+    # Start screen recording (1fps timelapse of the Xvfb display)
+    _rec_proc = None
+    _rec_path = None
+    try:
+        import re as _re
+        _rec_dir = "/opt/warmup/recordings"
+        os.makedirs(_rec_dir, exist_ok=True)
+        _safe_name = _re.sub(r"[^a-zA-Z0-9_-]", "_", name)
+        _rec_path = f"{_rec_dir}/{_safe_name}_{int(time.time())}.mp4"
+        _display = os.environ.get("DISPLAY", ":99")
+        _rec_proc = subprocess.Popen(
+            ["ffmpeg", "-y", "-f", "x11grab", "-video_size", "1920x1080",
+             "-framerate", "1", "-i", _display,
+             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "35",
+             "-pix_fmt", "yuv420p", _rec_path],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        print(f"  📹 Recording: {_rec_path}")
+    except Exception as _rec_err:
+        print(f"  Recording start failed (non-fatal): {_rec_err}")
+
+    # Expose recording path to login helpers so they can attach it to alerts
+    os.environ["_WARMUP_RECORDING_PATH"] = _rec_path or ""
+
     with sync_playwright() as pw:
         try:
             browser = pw.chromium.connect_over_cdp(
@@ -1916,6 +1958,25 @@ def main():
             import traceback
             traceback.print_exc()
         finally:
+            # Stop recording, then clean up old recordings (> 7 days)
+            if _rec_proc and _rec_proc.poll() is None:
+                _rec_proc.terminate()
+                try:
+                    _rec_proc.wait(timeout=10)
+                except Exception:
+                    _rec_proc.kill()
+            if _rec_path and os.path.exists(_rec_path):
+                _size_mb = os.path.getsize(_rec_path) / 1_000_000
+                print(f"  📹 Recording saved: {_rec_path} ({_size_mb:.1f} MB)")
+                try:
+                    import glob as _glob
+                    import time as _t
+                    _cutoff = _t.time() - 7 * 86400
+                    for _old in _glob.glob("/opt/warmup/recordings/*.mp4"):
+                        if os.path.getmtime(_old) < _cutoff:
+                            os.remove(_old)
+                except Exception:
+                    pass
             stop_profile(profile_info["id"])
 
 
