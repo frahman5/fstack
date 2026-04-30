@@ -35,11 +35,13 @@ curl -s -X POST "https://api.telegram.org/bot8645212775:AAGY4HuJmSn9d_S9ld9nU5Kp
 
 ## Overridden screenshot command
 
-The base protocol uses `screencapture` (macOS). On the server, use:
+**For CAPTCHA and login failures: the Python script already handles the Telegram photo.**
+`tiktok-warmup-poc.py` takes a `page.screenshot()` (browser content, not desktop) and sends it to Telegram before raising the exception. Do NOT take a desktop screenshot for these cases — it will show the Multilogin profile manager with the browser already closed, which is useless.
+
+Only use the desktop screenshot command for outages, profile start failures, and other cases where no browser screenshot exists:
 
 ```bash
 DISPLAY=:99 import -window root /tmp/warmup_issue.png
-sips -Z 1800 /tmp/warmup_issue.png  # not available on Linux — use convert instead:
 convert /tmp/warmup_issue.png -resize '1800x1800>' /tmp/warmup_issue.png
 ```
 
@@ -49,26 +51,17 @@ convert /tmp/warmup_issue.png -resize '1800x1800>' /tmp/warmup_issue.png
 
 When a session fails, hangs, or hits a blocking issue, do NOT wait for human input. Instead:
 
-### CAPTCHA
+### CAPTCHA / login failure
 
-1. Take screenshot (see Linux command above).
-2. Stop the profile via API to release the cloud lock:
+The Python script already sent a Telegram photo (browser screenshot + noVNC link) before raising. Do NOT take a desktop screenshot or send another Telegram message — it will be a duplicate showing the Multilogin manager with the browser closed.
+
+1. Stop the profile via API to release the cloud lock:
    ```bash
    curl -sf -X GET "https://launcher.mlx.yt:45001/api/v1/profile/stop/p/<PROFILE_ID>" \
      -H "Authorization: Bearer $MLX_AUTOMATION_TOKEN"
    ```
-3. Send Telegram alert with screenshot:
-   ```
-   🧩 CAPTCHA — tiktok,<handle>
-
-   Session stopped, profile lock released.
-   Resolve via Multilogin on your laptop, or:
-   noVNC: http://100.96.234.61:6080/vnc.html
-
-   Next scheduled run will retry this account.
-   ```
-4. Write Session Log row with `Error = "CAPTCHA — requires manual resolution"`.
-5. Move on to the next account.
+2. Write Session Log row with `Error = "CAPTCHA or login failure — see Telegram for screenshot"`.
+3. Move on to the next account.
 
 ### Proxy refresh needed (`PROXY_REFRESH_NEEDED`)
 
@@ -95,7 +88,7 @@ Automated re-login attempt failed. Credentials may be wrong in 1Password.
 noVNC: http://100.96.234.61:6080/vnc.html
 ```
 
-Then stop profile, write Session Log error row, move on.
+Then stop profile (via API), write Session Log error row (`Error = "Re-login failed — see Telegram for screenshot"`), move on. The Python script sends the Telegram photo — do NOT take a separate desktop screenshot.
 
 ### TikTok 24h lockout (`TIKTOK_LOCKOUT_24H`)
 
