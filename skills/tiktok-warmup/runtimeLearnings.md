@@ -424,3 +424,29 @@ sudo rm -f /tmp/tiktok_*.png /tmp/tiktok_login*.png /tmp/tiktok_session*.png
 - Navigation timeout → verify TikTok is reachable from the proxy IP
 
 **Prevention:** No code change needed — the profile-stop is correct behavior. Reduce frequency by resolving the upstream causes (CAPTCHA, proxy health).
+
+---
+
+## `uv` CLI Not Found — Orchestrator Infrastructure Error (2026-05-02)
+
+**Symptom:** Airtable Session Log shows `Orchestrator error: [Errno 2] No such file or directory: 'uv'`. Appeared 4 times on 2026-05-02 across all 4 Flooently accounts (French, Portuguese, Italian, Spanish) — one occurrence per account in the same batch window (09:14–09:20 UTC).
+
+**Root cause:** The warmup orchestrator calls `uv` (the Python package manager/runner) to launch session scripts, but `uv` is not installed or not on PATH in the execution environment. This is a harness infrastructure misconfiguration, not a TikTok or account issue.
+
+**Impact:** Each affected session fails immediately (no warmup activity). The error is transient per session — other sessions in the same batch that don't rely on `uv` may still succeed.
+
+**Recovery:** Ensure `uv` is installed on the execution host (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`). Verify it is on PATH for the harness user. Re-run failed sessions once fixed.
+
+**Prevention:** Add `uv --version` as a pre-flight check in the orchestrator startup. Pin the `uv` version in the deployment environment.
+
+---
+
+## `No JSON output: Traceback` — Script Crash Before Output (2026-05-02)
+
+**Symptom:** Airtable Session Log shows `No JSON output: Traceback (most recent call last):\n  File "/opt/warmup/.agents/skills/tiktok-warmup/...`. Appeared 5 times on 2026-05-02 across all 4 accounts. The entry is truncated; the full traceback is in the orchestrator logs.
+
+**Root cause:** The warmup Python script raised an unhandled exception before printing any JSON output to stdout. The orchestrator expects a JSON payload on stdout at script end; when it sees a Python traceback instead, it logs this error. Common upstream causes: import error, missing dependency, syntax error in a recently-edited file, or a runtime exception before the output block.
+
+**Recovery:** Check the orchestrator logs (not just the Airtable Session Log) for the full traceback. The truncated Airtable entry only shows the first line. Fix the underlying script error and re-run.
+
+**Prevention:** Wrap the script's main block in a try/except that always emits a minimal JSON error payload even on failure, so the orchestrator can distinguish crash types.

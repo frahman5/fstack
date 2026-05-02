@@ -4,6 +4,55 @@ One entry per audit run. Appended by the nightly audit agent. Newest entry at th
 
 ---
 
+## 2026-05-02T06:15:00Z
+
+**Repo:** TranslationKeyboard (Flooently brand)
+**Brand:** Flooently (inferred from repo; `AIRTABLE_BRAND` still not set in harness env — 4th consecutive audit noting this gap)
+**Accounts audited:** flooently_portuguese1, flooently_french, flooently_italian, flooently_spanish (4 active automated)
+
+### Data window (last 24h)
+
+- **Supabase warmup_actions:** 660 records — 28 session_ends (Spanish 11, Italian 9, Portuguese 8, French 0)
+- **Airtable Session Log:** 39 rows across 4 accounts
+
+### Per-account summary
+
+| Account | Supabase Sessions | Airtable Errors | Key Metrics |
+|---------|------------------|-----------------|-------------|
+| Giulia Romano (Italian) | 9 sessions (wk3 day15) | 5/13 errors | 115 videos, 21 likes, 1 follow (6 skipped), 0 comments (6 skipped), niche=9.8% |
+| Flooently Portuguese | 8 sessions (wk2 day14) | 5/10 errors | 121 videos, 24 likes, 0 follows (7 skipped), 0 comments (12 skipped), niche=28.8% |
+| Sebastian Vargas (Spanish) | 11 sessions (wk3 day16) | 6/13 errors | 201 videos, 42 likes, 11 follows, 6 comments (6 skipped), niche=38.2% |
+| Flooently French | 0 sessions | 3/3 errors | Error type shifted: was CAPTCHA (05-01), now uv-not-found + traceback (day 3 of 0 sessions) |
+
+### Observations
+
+| Severity | Finding |
+|----------|---------|
+| 🚨 CRIT | Flooently French: 3rd consecutive day of 0 sessions. Error type shifted from CAPTCHA to infrastructure errors (uv not found ×1, No JSON output Traceback ×2). Underlying block persists. |
+| 🚨 CRIT | New cross-account infrastructure error: `uv not found` appeared in all 4 accounts (French ×1, Portuguese ×1, Italian ×1, Spanish ×1). Orchestrator can't find `uv` CLI on PATH. |
+| 🚨 CRIT | New cross-account error: `No JSON output: Traceback` appeared in all 4 accounts (French ×2, Portuguese ×1, Italian ×1, Spanish ×1). Script crashing before JSON output. |
+| ⚠️ WARN | Giulia Romano: follow_skipped=6 vs follows=1 (86% skip rate), comment_skipped=6 vs comments=0. Selectors still failing. PROXY_REFRESH_NEEDED seen. niche=9.8% (<40%). |
+| ⚠️ WARN | Flooently Portuguese: 0 follows (7 skipped) in 121 videos/8 sessions (wk2 day14). 0 comments (12 skipped). niche=28.8% (<40%). Pattern persisting from 05/01. |
+| ⚠️ WARN | Sebastian Vargas: niche=38.2% (<40%) for 11 sessions (wk3 day16). Still improved vs 33.2% on 05/01 but below 40% target. |
+| ℹ️ INFO | Giulia Romano: improved from 2/12 sessions succeeding (05/01) to 8/13 today. CDP + CAPTCHA issues largely resolved; proxy and selector issues remain. |
+| ℹ️ INFO | Sebastian Vargas performing well overall: 11 follows, 6 comments, 42 likes in 11 sessions. Niche% is the only active concern. |
+| ℹ️ INFO | `AIRTABLE_BRAND` still not set (4th audit noting this). Recommend adding to harness env to prevent future ambiguity. |
+
+### Changes made
+
+1. **Skill edit** — `runtimeLearnings.md`: Added new entry "`uv` CLI Not Found — Orchestrator Infrastructure Error (2026-05-02)" documenting the 4× cross-account occurrence: symptom, root cause, impact, recovery steps, prevention guidance.
+2. **Skill edit** — `runtimeLearnings.md`: Added new entry "`No JSON output: Traceback` — Script Crash Before Output (2026-05-02)" documenting the 5× cross-account occurrence: symptom, root cause, recovery, prevention.
+   Both auto-merged (combined 38 lines added, 2 separate runtimeLearnings appends — each qualifies as safe template; ≤30 lines each).
+
+### Pending Actions written to Airtable
+
+- **Flooently French** (recp5WIzVLaq1DQDX): "Day 3 of 0 sessions (05-02). Error shifted: was CAPTCHA, now uv-not-found+traceback. Infrastructure error — check uv install on host before next run."
+- **Flooently Portuguese** (rec1UYGgeZa7qDwp6): "0 follows (7 skipped) in 121 videos/8 sessions 05-02 (wk2 day14). 0 comments (12 skipped). niche=28.8%. Follow+comment selectors failing — check selectors."
+- **Sebastian Vargas** (recnBlWFddyy2RUgr): "niche=38.2% (<40%) for 11 sessions 05-02 (wk3 day16). Refresh search terms before next run."
+- **Giulia Romano** (recu98K2EYekXSdYi): "follow_skip=6/1, comment=0/6 skipped 05-02 (wk3 day15). niche=9.8%. PROXY_REFRESH_NEEDED. Fix proxy + check selectors."
+
+---
+
 ## 2026-05-01T06:45:00Z
 
 **Repo:** TranslationKeyboard (Flooently brand)
