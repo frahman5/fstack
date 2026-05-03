@@ -441,6 +441,20 @@ sudo rm -f /tmp/tiktok_*.png /tmp/tiktok_login*.png /tmp/tiktok_session*.png
 
 ---
 
+## Simultaneous PROXY_REFRESH_NEEDED Across All Accounts — Proxy Provider Outage (2026-05-03)
+
+**Symptom:** All active accounts fail with `PROXY_REFRESH_NEEDED — requires manual proxy rotation (GET_PROXY_CONNECTION_IP_ERROR)` in the same batch window. Sessions abort immediately at proxy connection before any TikTok navigation. Seen 2026-05-03: 3 of 4 accounts (Flooently Portuguese, Sebastian Vargas, Giulia Romano) each logged 3+ PROXY_REFRESH_NEEDED errors across 3 consecutive batch runs (09:39, 15:35, 21:52 UTC), resulting in 0 successful sessions for the entire day.
+
+**Root cause:** Multilogin-managed residential proxy pool has no available IPs at connection time — either temporary pool exhaustion or a provider-side service disruption. When `GET_PROXY_CONNECTION_IP_ERROR` hits ≥3 accounts within the same 2-second batch window, it points to infrastructure-level failure rather than per-account TikTok blocking.
+
+**Distinction from single-account proxy failure:** Individual proxy failures are sporadic and affect one account at a time. Simultaneous failure across ≥3 accounts in the same 2-second window strongly indicates provider-side outage, not a TikTok detection event.
+
+**Recovery:** Rotate proxies for all affected accounts in Multilogin (profile → Proxy → Get New IP). If IP rotation is unavailable (provider-side outage), wait 30–60 minutes and retry. Check Multilogin's status page or proxy provider status if available.
+
+**Prevention:** Add a pre-flight proxy health check in the orchestrator: ping each proxy's test endpoint before launching sessions. If ≥2 accounts fail the health check simultaneously, abort the batch and send a Telegram alert rather than logging N individual PROXY_REFRESH_NEEDED errors.
+
+---
+
 ## `No JSON output: Traceback` — Script Crash Before Output (2026-05-02)
 
 **Symptom:** Airtable Session Log shows `No JSON output: Traceback (most recent call last):\n  File "/opt/warmup/.agents/skills/tiktok-warmup/...`. Appeared 5 times on 2026-05-02 across all 4 accounts. The entry is truncated; the full traceback is in the orchestrator logs.
