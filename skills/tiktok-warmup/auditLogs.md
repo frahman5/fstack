@@ -4,6 +4,52 @@ One entry per audit run. Appended by the nightly audit agent. Newest entry at th
 
 ---
 
+## 2026-05-04T06:38:00Z
+
+**Repo:** TranslationKeyboard (Flooently brand)
+**Brand:** Flooently (inferred from repo; `AIRTABLE_BRAND` still not set in harness env — 6th consecutive audit noting this gap)
+**Accounts audited:** flooently_portuguese1, flooently_french, flooently_italian, flooently_spanish (4 active automated)
+
+### Data window (last 24h)
+
+- **Supabase warmup_actions:** 0 records — 0 successful sessions
+- **Airtable Session Log:** 12 rows across all 4 accounts — 0 successes, all errors
+
+### Per-account summary
+
+| Account | Sessions | Errors | Key Error Types |
+|---------|----------|--------|-----------------|
+| Flooently Portuguese (wk2 day16) | 0 | 3/3 | PROXY_REFRESH_NEEDED/GET_PROXY_CONNECTION_IP_ERROR ×3 |
+| Sebastian Vargas (wk3 day18) | 0 | 3/3 | PROXY_REFRESH_NEEDED ×3 |
+| Flooently French (wk2 day15) | 0 | 3/3 | CAPTCHA or login failure ×3 |
+| Giulia Romano (wk3 day17) | 0 | 3/3 | PROXY_REFRESH_NEEDED ×3 |
+
+### Observations
+
+| Severity | Finding |
+|----------|---------|
+| 🚨 CRIT | **ZERO successful sessions — 2nd consecutive zero-session day.** All 3 batch runs (09:29, 15:51, 21:35 UTC) failed for every account. First zero-day was 2026-05-03. |
+| 🚨 CRIT | **Proxy provider outage persists (day 2).** Portuguese, Sebastian Vargas, Giulia Romano all failing with GET_PROXY_CONNECTION_IP_ERROR. Pending Actions from 2026-05-03 (rotate proxy in Multilogin) are unresolved. Human must act. |
+| 🚨 CRIT | Flooently French: **Day 5 of 0 sessions.** CAPTCHA block continues (3 errors in today's window). noVNC manual CAPTCHA resolution still required. |
+| ⚠️ WARN | Simultaneous PROXY_REFRESH_NEEDED across 3 accounts in same 2-second batch window at 09:29 and 15:51 UTC — proxy provider still not restored after yesterday's outage. |
+| ⚠️ WARN | Insufficient signal (0 successful sessions < 3 threshold): engagement metrics cannot be assessed. Pattern-based skill edits skipped per protocol §5. |
+| ⚠️ WARN | All 4 accounts had health scores below 50 (Portuguese: 35, Sebastian: 48, Giulia: 32, French: unknown) going into this run. No improvement. |
+| ℹ️ INFO | No new error types seen — all errors are PROXY_REFRESH_NEEDED (documented 2026-05-03) and CAPTCHA (documented multiple prior runs). No skill edits needed. |
+| ℹ️ INFO | `AIRTABLE_BRAND` still not set (6th audit noting this). Recommend adding to harness env. |
+
+### Changes made
+
+No skill edits — insufficient signal (0 successful sessions) and no new error types requiring documentation.
+
+### Pending Actions written to Airtable
+
+- **Flooently Portuguese** (rec1UYGgeZa7qDwp6): "Day 2 proxy outage (05-04). PROXY_REFRESH_NEEDED/GET_PROXY_CONNECTION_IP_ERROR persists. Open Multilogin → find Brazil profile → Get New IP NOW."
+- **Sebastian Vargas** (recnBlWFddyy2RUgr): "Day 2 proxy outage (05-04). PROXY_REFRESH_NEEDED persists. Open Multilogin → find Costa Rica profile → Get New IP NOW."
+- **Giulia Romano** (recu98K2EYekXSdYi): "Day 2 proxy outage (05-04). PROXY_REFRESH_NEEDED persists. Open Multilogin → find Italy profile → Get New IP NOW."
+- **Flooently French** (recp5WIzVLaq1DQDX): "Day 5 CAPTCHA block (05-04). 3 errors today (CAPTCHA/login). 0 sessions all week. Resolve CAPTCHA manually (noVNC) before next run."
+
+---
+
 ## 2026-05-03T06:38:00Z
 
 **Repo:** TranslationKeyboard (Flooently brand)
