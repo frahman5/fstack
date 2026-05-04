@@ -4,6 +4,52 @@ One entry per audit run. Appended by the nightly audit agent. Newest entry at th
 
 ---
 
+## 2026-05-03T06:38:00Z
+
+**Repo:** TranslationKeyboard (Flooently brand)
+**Brand:** Flooently (inferred from repo; `AIRTABLE_BRAND` still not set in harness env — 5th consecutive audit noting this gap)
+**Accounts audited:** flooently_portuguese1, flooently_french, flooently_italian, flooently_spanish (4 active automated)
+
+### Data window (last 24h)
+
+- **Supabase warmup_actions:** 25 records — 0 session_ends (1 partial French session: wk2d14, 19 video_watch + 4 like + 1 follow_skipped + 1 session_start, no session_end)
+- **Airtable Session Log:** 23 rows across all 4 accounts — 0 successes
+
+### Per-account summary
+
+| Account | Sessions | Airtable Errors | Key Error Types |
+|---------|----------|-----------------|-----------------|
+| Flooently Portuguese (wk2 day15) | 0 | 5/5 | PROXY_REFRESH_NEEDED×3 + CAPTCHA×1 + PROXY×1 |
+| Sebastian Vargas (wk3 day17) | 0 | 5/5 | PROXY_REFRESH_NEEDED×3 + CAPTCHA×1 + PROXY×1 |
+| Flooently French (wk2 day14) | 0 | 8/8 | CAPTCHA×4 + PermissionError /tmp×3 + PROXY×1 |
+| Giulia Romano (wk3 day16) | 0 | 5/5 | PROXY_REFRESH_NEEDED×3 + CAPTCHA×1 + PROXY×1 |
+
+### Observations
+
+| Severity | Finding |
+|----------|---------|
+| 🚨 CRIT | **ZERO successful sessions across all 4 accounts** — first complete-zero day since tracking began. All 3 batch runs (09:36, 15:35, 21:52 UTC) failed for every account. |
+| 🚨 CRIT | **Simultaneous PROXY_REFRESH_NEEDED (GET_PROXY_CONNECTION_IP_ERROR)** across Portuguese, Sebastian Vargas, Giulia Romano in every batch run. All accounts failed at proxy connection within 2 seconds of each other — proxy provider outage, not per-account TikTok block. |
+| 🚨 CRIT | Flooently French: Day 4 of 0 sessions. CAPTCHA block persists (4 CAPTCHA errors). PermissionError on /tmp/tiktok_initial.png + /tmp/tiktok_final.png (root-owned files from prior harness run) — recurring despite documentation in runtimeLearnings on 2026-04-30. |
+| ⚠️ WARN | All 4 accounts received simultaneous CAPTCHA/login failure at 09:36 UTC (within 2 seconds) — likely TikTok detecting batch execution pattern. |
+| ⚠️ WARN | Insufficient signal (0 successful sessions < 3 threshold): engagement metrics (niche_pct, follow/comment selectors) cannot be assessed. Pattern-based skill edits skipped per protocol §5. |
+| ℹ️ INFO | French partial Supabase session (18f9e8fe): wk2d14, 19 videos watched, 4 likes, 1 follow_skipped — session started but crashed before session_end. Shows CAPTCHA appeared mid-session after some activity. |
+| ℹ️ INFO | `AIRTABLE_BRAND` still not set (5th audit noting this). Recommend adding to harness env to prevent future ambiguity. |
+
+### Changes made
+
+1. **Skill edit** — `runtimeLearnings.md`: Added new entry "Simultaneous PROXY_REFRESH_NEEDED Across All Accounts — Proxy Provider Outage (2026-05-03)" documenting the symptom (all accounts failing simultaneously with GET_PROXY_CONNECTION_IP_ERROR), root cause (proxy pool exhaustion or provider outage), distinction from per-account failure, recovery (rotate proxies + wait if provider-side), and prevention (pre-flight proxy health check).
+   Auto-merged (20 lines added, safe template: runtimeLearnings.md append, ≤30 lines).
+
+### Pending Actions written to Airtable
+
+- **Flooently French** (recp5WIzVLaq1DQDX): "Day 4 of 0 sessions (05-03). CAPTCHA + /tmp screenshot PermissionError (root-owned). Clear /tmp/tiktok_*.png + resolve CAPTCHA before next run."
+- **Flooently Portuguese** (rec1UYGgeZa7qDwp6): "0 sessions 05-03 (5 errors, PROXY_REFRESH_NEEDED/GET_PROXY_CONNECTION_IP_ERROR). Proxy provider outage — rotate proxy in Multilogin before next run."
+- **Sebastian Vargas** (recnBlWFddyy2RUgr): "0 sessions 05-03 (5 errors, PROXY_REFRESH_NEEDED/GET_PROXY_CONNECTION_IP_ERROR). Proxy provider outage — rotate proxy in Multilogin before next run."
+- **Giulia Romano** (recu98K2EYekXSdYi): "0 sessions 05-03 (5 errors, PROXY_REFRESH_NEEDED/GET_PROXY_CONNECTION_IP_ERROR). Proxy provider outage — rotate proxy in Multilogin before next run."
+
+---
+
 ## 2026-05-02T06:15:00Z
 
 **Repo:** TranslationKeyboard (Flooently brand)
