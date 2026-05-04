@@ -106,3 +106,17 @@ Report the output to the user before proceeding. If warmup prerequisites (MLX + 
 ## Design philosophy
 
 Target 30-90 min of warmup per account per day, split into 2-4 sessions of 15-30 min each. Rest days in weeks 1-2 are natural (deterministic per account). The Scheduled Sessions Airtable table is deprecated - we log results directly to Session Log.
+
+## Ban risk lens — apply to every strategic decision
+
+**Whenever evaluating any infrastructure or workflow choice (proxy setup, IP rotation, session timing, account actions, tooling), explicitly reason through: how does this impact TikTok ban risk?**
+
+TikTok's trust system tracks device fingerprint + IP consistency over time. The main ban risk vectors to reason about for any decision:
+
+- **IP consistency**: same IP per account per session, same geo across sessions. Any IP change is a risk event.
+- **Session realism**: human-like dwell time, natural scroll speed, no bot-pattern actions (instant likes, identical session lengths).
+- **Account age signals**: new accounts are high-scrutiny; the first 14 days are the highest-risk window.
+- **Fingerprint stability**: Multilogin profile fingerprint (device, browser, OS) should never change mid-warmup.
+- **Action velocity**: too many follows/likes/comments in a session triggers spam detection.
+
+For any proposed change, ask: *does this make the account look more or less like a real human using a real phone on a consistent network?* If less — find the version that doesn't.
