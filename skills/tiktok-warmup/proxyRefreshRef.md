@@ -35,6 +35,8 @@ Proxy error on profile start?
 
 ## API: Generate Proxy
 
+**Match the protocol to the existing profile.** All Flooently profiles use `socks5` (port 1080). If you generate `http` (port 8080) for a profile configured as `socks5`, the update will mismatch. `refresh_proxy.py` auto-detects the existing protocol via `POST /profile/search` before generating.
+
 ```
 POST https://profile-proxy.multilogin.com/v1/proxy/connection_url
 Authorization: Bearer <MLX_AUTOMATION_TOKEN>
@@ -43,21 +45,22 @@ Content-Type: application/json
 {
   "country": "<2-letter ISO code>",   // e.g. "br", "it", "cr", "fr", "us"
   "sessionType": "sticky",
-  "protocol": "http",
+  "protocol": "socks5",              // or "http" — must match existing profile config
   "IPTTL": 86400,
   "count": 1
 }
 ```
 
-Response (201):
+Response (201) — `data` is a **list** even when `count=1`:
 ```json
 {
   "status": 200,
-  "data": "gate.multilogin.com:8080:<username>:<password>"
+  "data": ["gate.multilogin.com:1080:<username>:<password>"]
 }
 ```
 
-Parse with: `host, port, username, password = data.split(":")` — port is always `8080`.
+Parse: `proxy_str = data[0]`, then `host, port, username, password = proxy_str.split(":")`.
+Port is `1080` for socks5, `8080` for http.
 
 ---
 
@@ -152,34 +155,20 @@ Flags:
 
 ## Full automated flow (used by executor)
 
-```python
-def refresh_proxy_for_account(slug: str, profile_id: str, folder_id: str) -> bool:
-    """
-    Returns True if the proxy was refreshed successfully, False otherwise.
-    Profile MUST be stopped before calling this.
-    """
-    country = COUNTRY_BY_SLUG.get(slug)
-    if not country:
-        print(f"  refresh_proxy: no country mapping for {slug}, skipping")
-        return False
+The executor calls `refresh_proxy_for_account` from `refresh_proxy.py`, or runs the script directly:
 
-    # 1. Generate new sticky proxy
-    proxy_str = _generate_proxy(country)
-    if not proxy_str:
-        return False
-
-    # 2. Parse: "host:port:username:password"
-    parts = proxy_str.split(":")
-    if len(parts) != 4:
-        print(f"  refresh_proxy: unexpected proxy format: {proxy_str!r}")
-        return False
-    host, port, username, password = parts
-
-    # 3. Update the profile
-    return _update_profile_proxy(profile_id, host, int(port), username, password)
+```bash
+python3 "$SKILL_DIR/refresh_proxy.py" --account <slug>
+# exits 0 on success, 1 on failure
 ```
 
-See `refresh_proxy.py` for the full implementation.
+The function (`refresh_proxy_for_account` in `refresh_proxy.py`) does:
+1. Look up country from the `ACCOUNTS` registry by slug or profile_id
+2. Call `GET /profile/search` to detect the existing proxy protocol (socks5 vs http)
+3. Call Generate Proxy API with matching protocol + `sessionType=sticky` + `IPTTL=86400`
+4. Parse `data[0]` from the response list → `host:port:username:password`
+5. Call `POST /profile/update` with full parameters block (storage + fingerprint={} + standard flags + new proxy)
+6. Return `True` on 200, `False` otherwise
 
 ---
 
