@@ -463,24 +463,40 @@ Common failure categories and what you can try after Faiyam confirms:
 | CAPTCHA mid-session | Faiyam solves in the live browser → say "continue" → you re-run the session for that account |
 | Logged out, no stored credentials | Fetch from 1Password per `browserWarmupRef.md`; if still blocked, Faiyam logs in manually then you re-run |
 | **"Maximum number of attempts reached" on login** (TikTok 24h lockout) | **Automatically pause the account for 24h.** See "Lockout auto-pause" below. Do NOT retry — retrying extends the lockout and risks a flag. |
-| **`PROXY_REFRESH_NEEDED` on profile launch** | Semi-manual refresh. See "Proxy refresh" below. |
+| **`PROXY_REFRESH_NEEDED` on profile launch** | Automated refresh. See "Proxy refresh" below. |
 | Multilogin "Team: Unavailable" | Abort all sessions, tell Faiyam to wait for service recovery |
 | Profile already running (stale) | Call `GET https://launcher.mlx.yt:45001/api/v1/profile/stop/p/{PROFILE_ID}` with `MLX_AUTOMATION_TOKEN`, then retry |
 | Playwright CDP connection refused | Profile didn't actually start — check launcher response, retry once; if second failure, ask Faiyam |
 
 ### Proxy refresh (when profile launch fails with proxy error)
 
-Multilogin's built-in proxy rotation is UI-only — there is no public API endpoint for "Get new IP." So this step is semi-manual.
+**Ban risk check first — read `proxyRefreshRef.md` before acting.** Rotating a proxy changes the account's IP, which is a TikTok trust signal. Only rotate for a genuine proxy failure, never preemptively.
 
-The script (`tiktok-warmup-poc.py::start_profile` inside the skill dir) raises `PROXY_REFRESH_NEEDED: ...` when the launcher returns a proxy-related error. When you see that exception in a session's stdout:
+**Simultaneous failure across ≥3 accounts = provider outage, NOT per-account issue.**
+If ≥3 accounts raise `PROXY_REFRESH_NEEDED` within the same batch window (within 30s of each other), skip all rotations and send a Telegram escalation:
+> "🚨 ESCALATION: Proxy outage — ≥3 accounts hit PROXY_REFRESH_NEEDED simultaneously. Likely Multilogin proxy provider issue. Skipping all sessions. Please check Multilogin status and retry in 30–60 min."
+Then stop. Do not rotate any proxies during an outage.
 
-1. Do NOT mark the session failed yet. Tell Faiyam:
-   > "Proxy error on **<account name>** profile launch. Please (1) open Multilogin, (2) find the profile, (3) click 'Get new IP' on its proxy row, (4) wait ~10s for the new IP to connect, (5) reply 'ready' here."
-2. **Wait** for Faiyam's reply.
-3. Retry the launch **once** (re-run the same Python command). If it works, continue normally.
-4. If the retry also fails with `PROXY_REFRESH_NEEDED`, stop: mark the session failed with error = "Proxy still failing after refresh", tell Faiyam it's likely a deeper issue (proxy credential change, Multilogin proxy outage, account-specific config), and move to the next account.
+**Single-account proxy failure — automated flow:**
 
-Do not loop refresh→retry more than twice for a single account in one run.
+The script raises `PROXY_REFRESH_NEEDED: ...` when the launcher returns a proxy-related error on profile start. When you see this for a single account:
+
+1. **Stop the profile** (if not already stopped — it usually is since start failed).
+
+2. **Run the automated refresh:**
+   ```bash
+   python3 "$SKILL_DIR/refresh_proxy.py" --account <slug>
+   ```
+   This calls the Generate Proxy API (same country, sticky, 86400s TTL) and updates the profile via the Multilogin API. It prints `✅ proxy rotated` on success or `❌` on failure.
+
+3. If the script exits 0 (success): wait 10s for the proxy to propagate, then retry the session launch **once**.
+
+4. If the retry also fails with `PROXY_REFRESH_NEEDED`: stop. Mark the session failed with `error = "Proxy still failing after automated refresh — possible provider outage or credential issue"`. Move to the next account. Do not retry again today for this account.
+
+5. If `refresh_proxy.py` itself fails (exits non-zero): fall back to asking Faiyam:
+   > "Automated proxy refresh failed for **<account>** (API error — see output above). Please open Multilogin, click 'Get new IP' on the profile's proxy row, wait ~10s, then reply 'ready'. Or reply 'skip' to skip this account today."
+
+**Never rotate the same account's proxy more than once per executor run.**
 
 ### Lockout auto-pause (24h rule)
 

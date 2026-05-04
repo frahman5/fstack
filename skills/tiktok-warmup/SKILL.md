@@ -88,6 +88,7 @@ Report the output to the user before proceeding. If warmup prerequisites (MLX + 
 | [airtableRef.md](airtableRef.md) | Airtable base/table/field IDs - Accounts + Session Log are the two tables we use. |
 | [computerUseRef.md](computerUseRef.md) | Mobile cloud phone warmup - computer-use based. Used only for late-stage weeks or special cases. |
 | [peekabooRef.md](peekabooRef.md) | Peekaboo CLI fallback - used when request_access fails for cloud phone sessions. |
+| [proxyRefreshRef.md](proxyRefreshRef.md) | **Proxy refresh protocol** — when and how to rotate a profile's IP via API. Ban risk decision tree, generate+update flow, country codes, failure handling. See also `refresh_proxy.py` for the standalone script. |
 | [runtimeLearnings.md](runtimeLearnings.md) | Operational learnings from live sessions - **read before every execution**. |
 | [accountCreationRef.md](accountCreationRef.md) | How to create TikTok accounts and store credentials in 1Password. |
 | [createTiktokRef.md](createTiktokRef.md) | Full interactive protocol for /create-tiktok — step-by-step account creation walkthrough. |
