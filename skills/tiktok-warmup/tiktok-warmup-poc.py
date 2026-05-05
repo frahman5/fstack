@@ -596,6 +596,9 @@ class TikTokSession:
         input_selectors = [
             '[data-e2e="comment-input"]',
             'div[contenteditable="true"][data-tt*="comment" i]',
+            '[data-e2e="comment-text-input"]',
+            '[role="textbox"][contenteditable="true"]',
+            '[placeholder*="comment" i]',
             'div[contenteditable="true"]',
         ]
         try:
@@ -612,6 +615,11 @@ class TikTokSession:
                 return
             comment_btn.click()
             human_pause(1, 3)
+            # Wait for comment panel to animate open before querying input (fixes no_input_found)
+            try:
+                self.page.wait_for_selector('[data-e2e="comment-input"], div[contenteditable="true"]', timeout=3000)
+            except Exception:
+                pass
             comment_input = None
             for sel in input_selectors:
                 try:

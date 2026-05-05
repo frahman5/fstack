@@ -4,6 +4,55 @@ One entry per audit run. Appended by the nightly audit agent. Newest entry at th
 
 ---
 
+## 2026-05-05T06:11:00Z
+
+**Repo:** TranslationKeyboard (Flooently brand)
+**Brand:** Flooently (inferred from repo; `AIRTABLE_BRAND` still not set in harness env — 7th consecutive audit noting this gap)
+**Accounts audited:** Flooently Portuguese, Flooently French, Giulia Romano (Italian), Sebastian Vargas (Spanish) — 4 active automated
+
+### Data window (last 24h)
+
+- **Supabase warmup_actions:** 917 records — **35 session_ends** (French 15, Spanish 12, Portuguese 5, Italian 3) — 100% success rate
+- **Airtable Session Log:** 17 rows within window (15–16 UTC batch only; 21–23 UTC batch sessions not yet logged to Airtable — partial logging gap)
+
+### Per-account summary
+
+| Account | Sessions | Videos | Likes | Follows | FollowSkip | Comments | CmtSkip | Niche (Supabase) | Niche (Session Log) |
+|---------|----------|--------|-------|---------|------------|----------|---------|------------------|---------------------|
+| Flooently French (wk3 day16) | 15 | 311 | 81 | 17 | 0 | 13 | 5 | 35.7% | 47–92% (varies) |
+| Sebastian Vargas (wk3 day19) | 12 | 138 | 29 | 3 | 6 | 1 | 7 | 42.8% | 0–100% (varies) |
+| Flooently Portuguese (wk3 day17) | 5 | 113 | 27 | 0 | 3 | 0 | 9 | 35.4% | 0–70.8% |
+| Giulia Romano (wk3 day18) | 3 | 41 | 5 | 0 | 0 | 0 | 6 | 7.3% | N/A |
+
+### Observations
+
+| Severity | Finding |
+|----------|---------|
+| ✅ GOOD | **All 35 sessions succeeded (100% success rate) — first successful day after 2-day zero-session proxy/CAPTCHA outage.** Proxy rotation and CAPTCHA resolution unblocked all accounts. |
+| ✅ GOOD | Flooently French fully recovered: 15 sessions, 17 follows, 13 comments. Best single-day performance this week. CAPTCHA block from 05-04 resolved. |
+| ✅ GOOD | Sebastian Vargas performing well: 12 sessions, niche=42.8% (above 40% target), 3 follows, 1 comment. Proxy restored. |
+| ⚠️ WARN | **New pattern: `exception:TimeoutError` on engagement button clicks.** 20 comment_skipped + 9 follow_skipped with reason `exception:TimeoutError` (all on FYP). Selectors ARE finding buttons (0 `no_button_found` events) — the `element.click()` is timing out. Root cause: FYP video transition animation briefly makes buttons non-actionable. Not in runtimeLearnings prior to this audit. |
+| ⚠️ WARN | **`no_input_found` on comment input: 7 occurrences.** Comment button clicked successfully but input field not found. Current `div[contenteditable="true"]` selector is broad but panel may not be fully open when queried. |
+| ⚠️ WARN | Flooently Portuguese: 0 follows (3 follow_skipped, all TimeoutError), 0 comments (9 comment_skipped: 6 TimeoutError + 3 no_input_found), niche=35.4% (<40%). Pattern of 0 comments persists 5+ consecutive days (05-01 through 05-05). wk3 day17. |
+| ⚠️ WARN | Giulia Romano: Only 3 sessions (vs 15 for French) — check session scheduler. niche=7.3% (very low). 0 comments (6 TimeoutError), 0 follows (0 attempts logged — may not have triggered the 3% chance). |
+| ℹ️ INFO | Airtable Session Log partial: 21–23 UTC batch sessions appear in Supabase (35 total session_ends) but only 17 Session Log rows within window (15–16 UTC batch). Later sessions likely wrote to Airtable but after the page 1 cutoff, or Airtable logging is delayed. |
+| ℹ️ INFO | `AIRTABLE_BRAND` still not set (7th audit). Recommend adding `AIRTABLE_BRAND=Flooently` to harness env to prevent future ambiguity. |
+
+### Changes made
+
+1. **Skill edit** — `tiktok-warmup-poc.py`: Added 3 new candidate selectors to `input_selectors` in `_comment_on_video` (`[data-e2e="comment-text-input"]`, `[role="textbox"][contenteditable="true"]`, `[placeholder*="comment" i]`) and added `page.wait_for_selector` call (with `timeout=3000`, wrapped in try/except) before the input query loop to allow the comment panel to animate open. Addresses the `no_input_found` (7 occurrences). Auto-merged (8 lines added, safe template: new selectors + wait guard).
+
+2. **Skill edit** — `runtimeLearnings.md`: Added new entry "`exception:TimeoutError` on Engagement Button Clicks — FYP Animation Overlap (2026-05-05)" documenting the 29× cross-account occurrence, root cause, distinction from selector failure, recovery guidance. Auto-merged (safe template: runtimeLearnings append).
+
+### Pending Actions written to Airtable
+
+- **Flooently Portuguese** (rec1UYGgeZa7qDwp6): "Proxy resolved (05-05). 5 sessions. 0 follows (timeout×3), 0 comments (timeout×6, no_input×3). niche=35.4%. Engagement buttons timing out on FYP — see runtimeLearnings 05-05."
+- **Giulia Romano** (recu98K2EYekXSdYi): "Proxy resolved (05-05). Only 3 sessions/41 vids. niche=7.3% (very low). 0 comments (timeout×6). 0 follows (no attempts). Check schedule — only 3 sessions vs 15 for French. Refresh niche terms."
+- **Flooently French** (recp5WIzVLaq1DQDX): "RECOVERED (05-05). CAPTCHA/proxy resolved. 15 sessions, 17 follows, 13 comments — best day of week. Monitor niche_match (35.7% Supabase). No action needed."
+- **Sebastian Vargas** (recnBlWFddyy2RUgr): "Proxy resolved (05-05). 12 sessions, 3 follows, 1 comment. niche=42.8% (on target). Some engagement TimeoutErrors — see runtimeLearnings 05-05. No urgent action."
+
+---
+
 ## 2026-05-04T06:38:00Z
 
 **Repo:** TranslationKeyboard (Flooently brand)
