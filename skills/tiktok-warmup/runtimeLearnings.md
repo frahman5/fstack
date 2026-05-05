@@ -464,3 +464,17 @@ sudo rm -f /tmp/tiktok_*.png /tmp/tiktok_login*.png /tmp/tiktok_session*.png
 **Recovery:** Check the orchestrator logs (not just the Airtable Session Log) for the full traceback. The truncated Airtable entry only shows the first line. Fix the underlying script error and re-run.
 
 **Prevention:** Wrap the script's main block in a try/except that always emits a minimal JSON error payload even on failure, so the orchestrator can distinguish crash types.
+
+---
+
+## `exception:TimeoutError` on Engagement Button Clicks — FYP Animation Overlap (2026-05-05)
+
+**Symptom:** Supabase `warmup_actions` logs show `comment_skipped` and `follow_skipped` with `reason: "exception:TimeoutError"` on the FYP (`location: "fyp"`). Seen 2026-05-05: 20 comment TimeoutErrors (Italian, Portuguese, Spanish, French) + 9 follow TimeoutErrors (Portuguese, Spanish) across 35 sessions. Selectors ARE finding the buttons (`no_button_found` count = 0) — the error occurs during `element.click()`.
+
+**Root cause:** After scrolling to a new FYP video, the engagement sidebar (like/follow/comment buttons) briefly animates in or re-renders. Playwright's `element.click()` waits for the element to be "stable and actionable" — if the button is in a transition state or momentarily covered by the video's overlay, Playwright times out waiting for actionability. This is transient and location-specific (all occurrences on `fyp`, never on `explore`).
+
+**Distinction from selector failure:** `follow_skipped reason="no_button_found"` means the selector didn't match. `reason="exception:TimeoutError"` means the element was found but clicking it timed out. Check `reason` field to distinguish.
+
+**Recovery:** No immediate action needed if click success rate is >50% across sessions. If TimeoutError rate climbs above 80% (i.e., follow/comment selectors found but clicks always fail), add a `human_pause(0.5, 1)` before each click, or use `click(force=True)` as a fallback to bypass Playwright's actionability check.
+
+**Prevention:** After FYP scroll, allow the video card to finish its entrance animation before attempting engagement. The `_scroll_to_next_video()` pause already helps; ensure `human_pause` values in the scroll loop are not reduced below 1 second.
