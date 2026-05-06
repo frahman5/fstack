@@ -474,8 +474,11 @@ Common failure categories and what you can try after Faiyam confirms:
 
 **Simultaneous failure across ≥3 accounts = provider outage, NOT per-account issue.**
 If ≥3 accounts raise `PROXY_REFRESH_NEEDED` within the same batch window (within 30s of each other), skip all rotations and send a Telegram escalation:
-> "🚨 ESCALATION: Proxy outage — ≥3 accounts hit PROXY_REFRESH_NEEDED simultaneously. Likely Multilogin proxy provider issue. Skipping all sessions. Please check Multilogin status and retry in 30–60 min."
+> "🚨 ESCALATION: Proxy outage — ≥3 accounts hit PROXY_REFRESH_NEEDED simultaneously. Likely Multilogin proxy provider issue. Skipping all sessions. Check status: https://status.multilogin.com/ — retry in 30–60 min once green."
 Then stop. Do not rotate any proxies during an outage.
+
+**Always include https://status.multilogin.com/ in any proxy-related Telegram escalation** — saves Faiyam a step when triaging. Also applies to single-account failures that look proxy-flavored (e.g. `GET_PROXY_CONNECTION_IP_ERROR`, repeated `LOCK_PROFILE_ERROR` after a stop). Before sending such an escalation, fetch the status page yourself and mention if there's an active incident:
+> "🚨 ESCALATION: tiktok,flooently_spanish proxy launch failing (`GET_PROXY_CONNECTION_IP_ERROR`). status.multilogin.com shows active incident on Proxy Service — likely the cause. Stopping work on this account."
 
 **Single-account proxy failure — automated flow:**
 

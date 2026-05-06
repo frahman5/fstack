@@ -3,6 +3,15 @@
 Automated proxy rotation for Multilogin browser profiles. Called by the executor
 when `PROXY_REFRESH_NEEDED` is raised, or as a standalone operation.
 
+## Before refreshing — check the Multilogin status page
+
+**Always check https://status.multilogin.com/ first when you see proxy errors.** Multilogin's proxy infrastructure has periodic outages — when it's down, no amount of rotation will fix it. Symptoms that mean "check status page first, do not rotate":
+- `GET_PROXY_CONNECTION_IP_ERROR` ("couldn't get proxy connection ip data")
+- `LOCK_PROFILE_ERROR` that persists after a `/profile/stop` call
+- Multiple accounts failing to launch with proxy-related errors in quick succession
+
+If the status page shows an active incident on the proxy/launcher service, **stop all rotation attempts**, escalate to Faiyam (include the status page URL in the message), and wait for the incident to resolve. Rotating during an outage burns through fresh IPs for nothing and may complicate recovery once the service comes back.
+
 ## Ban risk lens — read before every refresh decision
 
 **Changing a profile's IP is a TikTok trust signal. Every refresh is a risk event.**
