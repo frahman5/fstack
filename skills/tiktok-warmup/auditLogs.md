@@ -4,6 +4,55 @@ One entry per audit run. Appended by the nightly audit agent. Newest entry at th
 
 ---
 
+## 2026-05-11T06:20:00Z
+
+**Repo:** TranslationKeyboard (Flooently brand)
+**Brand:** Flooently (inferred from repo; `AIRTABLE_BRAND` still not set in harness env — 8th consecutive audit noting this gap)
+**Accounts audited:** Flooently Portuguese, Flooently French, Sebastian Vargas (Spanish), Giulia Romano (Italian) — 4 active automated
+
+### Data window (last 24h): 2026-05-10T06:20Z → 2026-05-11T06:20Z
+
+- **Supabase warmup_actions:** 0 records — **0 successful sessions on May 10**
+- **Airtable Session Log:** 12 rows on May 10 — all errors, 0 successes
+
+### Per-account summary
+
+| Account | Sessions | Airtable Errors | Key Error Types |
+|---------|----------|-----------------|-----------------|
+| Flooently Portuguese (wk4d22+) | 0 | 3/3 | GET_PROXY_CONNECTION_IP_ERROR ×2 + SOCKS5 auth failure ×1 |
+| Sebastian Vargas (wk4d24+) | 0 | 3/3 | GET_PROXY_CONNECTION_IP_ERROR ×2 + SOCKS5 auth failure ×1 |
+| Flooently French | 0 | 3/3 | LOCK_PROFILE_ERROR ×1 + SOCKS5 auth failure ×1 + GET_PROXY_CONNECTION_IP_ERROR ×1 |
+| Giulia Romano | 0 | 3/3 | GET_PROXY_CONNECTION_IP_ERROR ×2 + SOCKS5 auth failure ×1 |
+
+### Observations
+
+| Severity | Finding |
+|----------|---------|
+| 🚨 CRIT | **ZERO successful sessions — 2nd consecutive zero day (May 9 had only 3 session_ends, May 10 had 0).** All 3 batch runs (09:32, 15:32, 21:32 UTC) failed for all 4 accounts. |
+| 🚨 CRIT | **Proxy provider outage (new episode — distinct from May 3–4 outage).** May 5 recovery held for ~4 days; new outage began May 10. All accounts failing simultaneously with GET_PROXY_CONNECTION_IP_ERROR or SOCKS5 auth failure. |
+| 🚨 CRIT | **New error subtype: "SOCKS5 auth failing for all accounts"** — seen at 15:32 UTC batch (4 accounts). Not previously documented. SOCKS5 auth failure is a different surface error from GET_PROXY_CONNECTION_IP_ERROR but same root cause: no usable proxy IPs from provider. |
+| 🚨 CRIT | Giulia Romano: **6th+ consecutive zero-session day.** CAPTCHA + proxy simultaneous failure persisting since ~May 4. Escalation from 05-09 audit unresolved. |
+| 🚨 CRIT | Flooently French: **Silent follow action block unresolved from May 9.** 39 follow clicks logged, Following=0 on hard reload. AND CAPTCHA block AND proxy outage — 3 simultaneous blockers. |
+| ⚠️ WARN | Flooently French: **New error — LOCK_PROFILE_ERROR** at 09:32 UTC May 10 (profile launch failed). Only 1 occurrence; below ≥3 threshold for skill edit but notable for French account which has complex blocking state. |
+| ⚠️ WARN | Insufficient signal (0 successful sessions < 3 threshold): engagement metrics cannot be assessed. Engagement-based skill edits skipped per protocol §5. |
+| ℹ️ INFO | Note: Audit gap of 5 days (2026-05-06 through 2026-05-10) — agent was not triggered. First audit since 2026-05-05T06:11:00Z. |
+| ℹ️ INFO | `AIRTABLE_BRAND` still not set in harness env (8th consecutive audit noting this). Add `AIRTABLE_BRAND=Flooently` to `.env.cli` or harness environment. |
+
+### Changes made
+
+1. **Skill edit** — `runtimeLearnings.md`: Added entry "SOCKS5 Proxy Auth Failure — Variant of Proxy Provider Outage (2026-05-10)" documenting the 4× occurrence at 15:32 UTC batch, its relationship to the existing GET_PROXY_CONNECTION_IP_ERROR pattern, and identical recovery steps. Auto-merged (≤30 lines, safe template: runtimeLearnings.md append).
+
+2. **Skill edit** — `runtimeLearnings.md`: Added entry "Silent Follow Action Block — TikTok Silently Ignores Follow Clicks (2026-05-09)" documenting 39 follow clicks on Flooently French with Following=0 on hard reload. New critical pattern not previously documented. Recovery: stop follows, add phone number, wait 24–48h. Auto-merged (≤30 lines, safe template: runtimeLearnings.md append).
+
+### Pending Actions written to Airtable
+
+- **Flooently Portuguese** (rec1UYGgeZa7qDwp6): "PROXY OUTAGE DAY 1 (05-10): 0 sessions. All 3 batches failed GET_PROXY_CONNECTION_IP_ERROR. Deploy /tmp fix still needed. Rotate proxy in Multilogin before next run."
+- **Sebastian Vargas** (recnBlWFddyy2RUgr): "PROXY OUTAGE DAY 1 (05-10): 0 sessions. All 3 batches failed (GET_PROXY_CONNECTION_IP_ERROR/SOCKS5 auth). Deploy /tmp fix. Refresh niche search terms (niche=23.1% on last good session 05-09, target >=40%)."
+- **Flooently French** (recp5WIzVLaq1DQDX): "PROXY OUTAGE DAY 1 + SILENT FOLLOW SHADOWBAN + CAPTCHA (05-10): 0 sessions. 3 outage errors. PRIOR: 39 follow clicks on 05-09 but Following=0 (shadowban). Add phone number (no VOIP) in TikTok Settings. Resolve CAPTCHA via noVNC. Fix proxy. Address shadowban before resuming follows."
+- **Giulia Romano** (recu98K2EYekXSdYi): "PROXY OUTAGE DAY 1 + 6TH CONSECUTIVE ZERO-SESSION DAY (05-10): CAPTCHA + PROXY simultaneous. 0 sessions since ~05-04. URGENT: resolve CAPTCHA (noVNC) + rotate proxy in Multilogin before next run."
+
+---
+
 ## 2026-05-05T06:11:00Z
 
 **Repo:** TranslationKeyboard (Flooently brand)
