@@ -478,3 +478,31 @@ sudo rm -f /tmp/tiktok_*.png /tmp/tiktok_login*.png /tmp/tiktok_session*.png
 **Recovery:** No immediate action needed if click success rate is >50% across sessions. If TimeoutError rate climbs above 80% (i.e., follow/comment selectors found but clicks always fail), add a `human_pause(0.5, 1)` before each click, or use `click(force=True)` as a fallback to bypass Playwright's actionability check.
 
 **Prevention:** After FYP scroll, allow the video card to finish its entrance animation before attempting engagement. The `_scroll_to_next_video()` pause already helps; ensure `human_pause` values in the scroll loop are not reduced below 1 second.
+
+---
+
+## SOCKS5 Proxy Auth Failure — Variant of Proxy Provider Outage (2026-05-10)
+
+**Symptom:** All 4 Flooently accounts fail in the 15:32 UTC batch with `Proxy outage — SOCKS5 auth failing for all accounts`. The 09:32 and 21:32 batches on the same day show the standard `GET_PROXY_CONNECTION_IP_ERROR` variant. All batches result in 0 successful sessions (12 errors total on 2026-05-10).
+
+**Root cause:** A second proxy provider outage, distinct from the May 3–4 outage that was resolved on May 5. At 15:32 UTC the error message shifted from `GET_PROXY_CONNECTION_IP_ERROR` to a SOCKS5 authentication failure, indicating Multilogin's underlying proxy pool rotated between error subtypes during the same outage window. Both `GET_PROXY_CONNECTION_IP_ERROR` and SOCKS5 auth failure are surface expressions of the same condition: no usable IPs available from the provider.
+
+**Distinction from the May 3 outage:** The May 3 entry documents `GET_PROXY_CONNECTION_IP_ERROR`. When you see `SOCKS5 auth failing`, treat it identically — it is the same provider-level outage, different subtype. Recovery steps are the same: rotate proxies in Multilogin or wait for provider restoration.
+
+**Recovery:** Rotate proxies for all affected accounts in Multilogin (profile → Proxy → Get New IP). If provider-side, wait 30–60 min and retry. Confirm proxy restoration before next batch window.
+
+**Prevention:** Pre-flight proxy health check per May 3 entry. Monitor for alternating error subtypes in the same outage — they are the same root cause.
+
+---
+
+## Silent Follow Action Block — TikTok Silently Ignores Follow Clicks (2026-05-09)
+
+**Symptom:** Supabase `warmup_actions` logs 39 `follow` actions for Flooently French (wk2) across a session on 2026-05-09, but a hard reload of the TikTok profile page shows `Following: 0` — none of the follows went through. The orchestrator received no error; `action_type=follow` records were written normally. This is a silent action block, not a Playwright failure.
+
+**Root cause:** TikTok's server-side follow action restriction (commonly called a "soft shadowban" or "action block"). TikTok accepts the follow click in the UI and returns no error to the browser, but does not increment the following count. This is typically triggered by accounts that have accumulated suspicious signals: too many follows in a short window, new accounts following at high rates, or accounts TikTok has flagged for review. French account was in week 2 of warmup and the orchestrator was logging follows normally.
+
+**Distinction from selector failure:** `follow_skipped reason="no_button_found"` means the button was not found. `action_type=follow` (logged successfully) with Following=0 on reload means the click happened but TikTok silently rejected it server-side.
+
+**Recovery:** Stop all follow activity on the affected account immediately. Verify the action block by checking the "Following" count in TikTok settings after a hard page reload. Add a phone number (no VOIP) in TikTok → Settings → Phone to help verify the account. Wait 24–48 hours before attempting follows again. Reduce follow targets for the account.
+
+**Prevention:** After each session, verify that `follows_actual` in the session summary matches the delta in TikTok's Following count. If divergence ≥5, flag as potential action block and skip follows next session.
